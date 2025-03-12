@@ -1,8 +1,12 @@
 import * as vscode from "vscode";
-import { LocationFinder } from "./helpers/locationfinder";
+import { LocationFinder } from "./helpers/location-finder";
+import { FunctionLocation } from "./types";
+import { isKeyword } from "./helpers";
 
 // Register the definition provider and hover provider
 export function activate(context: vscode.ExtensionContext) {
+  const store = new Map<string, FunctionLocation>();
+
   const definitionProvider = vscode.languages.registerDefinitionProvider(
     "javascript",
     {
@@ -24,7 +28,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         const functionName = word;
 
-        if (functionName.length > 30) {
+        if (functionName.length > 30 || isKeyword(functionName)) {
           return;
         }
 
@@ -40,12 +44,16 @@ export function activate(context: vscode.ExtensionContext) {
           functionName
         );
 
-        if (functionLocation) {
-          return new vscode.Location(
-            vscode.Uri.file(functionLocation.file),
-            new vscode.Position(functionLocation.line, 0)
-          );
+        if (!functionLocation) {
+          return;
         }
+
+        store.set(functionName, functionLocation);
+
+        return new vscode.Location(
+          vscode.Uri.file(functionLocation.path),
+          new vscode.Position(functionLocation.line, 0)
+        );
       },
     }
   );
@@ -69,7 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       const functionName = word;
 
-      if (functionName.length > 30) {
+      if (functionName.length > 30 || isKeyword(functionName)) {
         return;
       }
 
@@ -79,14 +87,27 @@ export function activate(context: vscode.ExtensionContext) {
 
       const locationfinder = new LocationFinder(documentText, cwd);
 
-      const functionText = await locationfinder.getFunctionText(functionName);
+      const functionLocation =
+        store.get(functionName) ??
+        (await locationfinder.findFunctionLocation(functionName));
 
-      if (functionText) {
-        return new vscode.Hover({
-          language: "javascript",
-          value: functionText,
-        });
+      if (!functionLocation) {
+        return;
       }
+
+      const functionText = locationfinder.getFunctionText(
+        functionLocation.content,
+        functionLocation.line
+      );
+
+      if (!functionText) {
+        return;
+      }
+
+      new vscode.Hover({
+        language: "javascript",
+        value: functionText,
+      });
     },
   });
 
