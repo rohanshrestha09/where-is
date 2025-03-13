@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { LocationFinder } from "./helpers/location-finder";
 import { FunctionLocation } from "./types";
 import { isKeyword } from "./helpers";
+import { PreviewGenerator } from "./helpers/preview-generator";
 
 // Register the definition provider and hover provider
 export function activate(context: vscode.ExtensionContext) {
@@ -95,18 +96,19 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const functionText = locationfinder.getFunctionText(
-        functionLocation.content,
+      const previewGenerator = new PreviewGenerator(functionLocation.content);
+
+      const previewText = previewGenerator.generateFunctionDefinitionPreview(
         functionLocation.line
       );
 
-      if (!functionText) {
+      if (!previewText) {
         return;
       }
 
-      new vscode.Hover({
+      return new vscode.Hover({
         language: "javascript",
-        value: functionText,
+        value: previewText,
       });
     },
   });

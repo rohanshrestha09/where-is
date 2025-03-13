@@ -1,10 +1,10 @@
-import { DirectedChainGraph, GraphRegistry } from "../datastructures/graph";
+import { DirectedChainGraph } from "../datastructures/graph";
 
-export class GraphRegistryGenerator {
-  private registry: GraphRegistry;
+export class GraphGenerator {
+  private graph: DirectedChainGraph;
 
   constructor() {
-    this.registry = new GraphRegistry();
+    this.graph = new DirectedChainGraph();
   }
 
   /**
@@ -14,10 +14,18 @@ export class GraphRegistryGenerator {
    * @returns True if the value should be parsed as an expression, false otherwise
    */
   private shouldParseAsExpression(value: string): boolean {
-    // Check if the value contains dots that are not within quotes or brackets
+    return (
+      this.hasDotOutsideQuotesAndBrackets(value) ||
+      this.matchesExpressionPattern(value)
+    );
+  }
+
+  /**
+   * Check if the value contains dots that are not within quotes or brackets
+   */
+  private hasDotOutsideQuotesAndBrackets(value: string): boolean {
     let inQuotes = false;
     let inBrackets = false;
-    let hasDotOutsideQuotesAndBrackets = false;
 
     for (let i = 0; i < value.length; i++) {
       const char = value[i];
@@ -39,16 +47,17 @@ export class GraphRegistryGenerator {
 
       // Check for dots outside quotes and brackets
       if (char === "." && !inQuotes && !inBrackets) {
-        hasDotOutsideQuotesAndBrackets = true;
+        return true;
       }
     }
 
-    // If the value has dots outside quotes and brackets, it's likely an expression
-    if (hasDotOutsideQuotesAndBrackets) {
-      return true;
-    }
+    return false;
+  }
 
-    // Check if the value matches common patterns for expressions
+  /**
+   * Check if the value matches common patterns for expressions
+   */
+  private matchesExpressionPattern(value: string): boolean {
     const expressionPatterns = [
       /^[a-zA-Z_$][a-zA-Z0-9_$]*\.[a-zA-Z_$][a-zA-Z0-9_$]*/, // simple dot notation: obj.prop
       /\[['"]\w+['"]\]/, // bracket notation: obj["prop"] or obj['prop']
@@ -74,28 +83,25 @@ export class GraphRegistryGenerator {
     const parts: string[] = [];
     let currentPart = "";
     let inBrackets = false;
-    let bracketType = "";
 
     for (let i = 0; i < expression.length; i++) {
       const char = expression[i];
 
-      // Handle opening brackets
-      if ((char === "[" || char === '"' || char === "'") && !inBrackets) {
+      if (this.handleOpeningBracket(char, inBrackets)) {
         inBrackets = true;
-        bracketType = char;
-        currentPart += char;
+        if (currentPart) {
+          parts.push(currentPart);
+          currentPart = "";
+        }
         continue;
       }
 
-      // Handle closing brackets
-      if (
-        (char === "]" && bracketType === "[") ||
-        (char === '"' && bracketType === '"') ||
-        (char === "'" && bracketType === "'")
-      ) {
+      if (this.handleClosingBracket(char, "[")) {
         inBrackets = false;
-        bracketType = "";
-        currentPart += char;
+        if (currentPart) {
+          parts.push(currentPart.replace(/['"]/g, "")); // Remove quotes
+          currentPart = "";
+        }
         continue;
       }
 
@@ -106,7 +112,7 @@ export class GraphRegistryGenerator {
       }
 
       // If we encounter a dot and we're not in brackets, it's a separator
-      if (char === "." && !inBrackets) {
+      if (this.isDotSeparator(char, inBrackets)) {
         if (currentPart) {
           parts.push(currentPart);
           currentPart = "";
@@ -127,55 +133,94 @@ export class GraphRegistryGenerator {
   }
 
   /**
-   * Generate graphs from dot notation expressions like "services.MongoService.getPopulatedDataAsync"
+   * Check if character is an opening bracket
+   */
+  private handleOpeningBracket(char: string, inBrackets: boolean): boolean {
+    return (char === "[" || char === '"' || char === "'") && !inBrackets;
+  }
+
+  /**
+   * Check if character is a closing bracket
+   */
+  private handleClosingBracket(char: string, bracketType: string): boolean {
+    return (
+      (char === "]" && bracketType === "[") ||
+      (char === '"' && bracketType === '"') ||
+      (char === "'" && bracketType === "'")
+    );
+  }
+
+  /**
+   * Check if character is a dot separator
+   */
+  private isDotSeparator(char: string, inBrackets: boolean): boolean {
+    return char === "." && !inBrackets;
+  }
+
+  /**
+   * Generate graphs from dot notation expressions
    * Each expression will create a chain of vertices connected in the order they appear
    *
    * @param expressions Array of dot notation expressions
    * @returns The updated registry with new graphs
    */
-  private generateGraphFromExpressions(expressions: string[]): GraphRegistry {
+  private generateGraphFromExpressions(
+    expressions: string[]
+  ): DirectedChainGraph {
     for (const expression of expressions) {
-      // Skip empty expressions
-      if (!expression.trim()) {
+      if (!this.isValidExpression(expression)) {
         continue;
       }
 
-      // Parse the expression into parts
       const parts = this.parseExpression(expression);
 
-      if (parts.length < 2) {
-        console.warn(
-          `Expression "${expression}" needs at least two parts to form a graph. Skipping.`
-        );
+      if (!this.hasEnoughParts(parts, expression)) {
         continue;
       }
 
-      // Create a new graph for this expression
-      const graph = new DirectedChainGraph();
-
-      // Add all parts as vertices
-      for (const part of parts) {
-        graph.addVertex(part);
-      }
-
-      // Connect the vertices in reverse order (from right to left)
-      // This ensures that when we follow the path, we go from left to right
-      for (let i = parts.length - 1; i > 0; i--) {
-        try {
-          graph.addEdge(parts[i], parts[i - 1]);
-        } catch (error: any) {
-          console.warn(
-            `Error adding edge in expression "${expression}": ${error.message}`
-          );
-        }
-      }
-
-      // Register the graph
-      this.registry.registerGraph(graph);
-      console.log(`Created graph from expression: ${expression}`);
+      this.addPartsAsVertices(parts);
+      this.connectPartsInReverseOrder(parts);
     }
 
-    return this.registry;
+    return this.graph;
+  }
+
+  /**
+   * Check if expression is valid (not empty)
+   */
+  private isValidExpression(expression: string): boolean {
+    return expression.trim().length > 0;
+  }
+
+  /**
+   * Check if expression has enough parts to form a graph
+   */
+  private hasEnoughParts(parts: string[], expression: string): boolean {
+    if (parts.length < 2) {
+      console.warn(
+        `Expression "${expression}" needs at least two parts to form a graph. Skipping.`
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Add all parts as vertices to the graph
+   */
+  private addPartsAsVertices(parts: string[]): void {
+    for (const part of parts) {
+      this.graph.addVertex(part);
+    }
+  }
+
+  /**
+   * Connect parts in reverse order to ensure correct path traversal
+   */
+  private connectPartsInReverseOrder(parts: string[]): void {
+    for (let i = parts.length - 1; i > 0; i--) {
+      this.addSafeEdge(parts[i], parts[i - 1]);
+    }
   }
 
   /**
@@ -186,127 +231,86 @@ export class GraphRegistryGenerator {
    */
   private generateGraphFromAssignments(
     assignments: Map<string, string>
-  ): GraphRegistry {
+  ): DirectedChainGraph {
     // Create graphs for each assignment
     for (const [variable, value] of assignments.entries()) {
-      // Create a graph for this assignment
-      const assignmentGraph = new DirectedChainGraph();
+      this.graph.addVertex(variable);
 
-      // Add the variable as a vertex
-      assignmentGraph.addVertex(variable);
-
-      // Try to determine if the value should be treated as an expression
       const shouldParseAsExpression = this.shouldParseAsExpression(value);
 
       if (!shouldParseAsExpression) {
-        // Treat as a literal string
-        assignmentGraph.addVertex(value);
-
-        // Connect variable to value
-        try {
-          assignmentGraph.addEdge(variable, value);
-        } catch (error: any) {
-          console.warn(
-            `Error adding edge for assignment "${variable} = ${value}": ${error.message}`
-          );
-        }
-
-        // Register the assignment graph
-        this.registry.registerGraph(assignmentGraph);
-        console.log(
-          `Created graph from simple assignment: ${variable} = ${value}`
-        );
+        this.handleSimpleAssignment(variable, value);
       } else {
-        // Parse the value as an expression
-        const valueParts = this.parseExpression(value);
-
-        if (valueParts.length === 0) {
-          console.warn(
-            `Empty value for assignment "${variable} = ${value}". Skipping.`
-          );
-          continue;
-        }
-
-        if (valueParts.length === 1) {
-          // Simple assignment to a single value
-          assignmentGraph.addVertex(value);
-
-          // Connect variable to value
-          try {
-            assignmentGraph.addEdge(variable, value);
-          } catch (error: any) {
-            console.warn(
-              `Error adding edge for assignment "${variable} = ${value}": ${error.message}`
-            );
-          }
-
-          // Register the assignment graph
-          this.registry.registerGraph(assignmentGraph);
-          console.log(
-            `Created graph from simple assignment: ${variable} = ${value}`
-          );
-        } else {
-          // The value is an expression with multiple parts
-          // Create a separate graph for the expression
-          const expressionGraph = new DirectedChainGraph();
-
-          // Add all parts of the expression as vertices
-          for (const part of valueParts) {
-            expressionGraph.addVertex(part);
-          }
-
-          // Connect the parts of the expression in reverse order (from right to left)
-          // This ensures that when we follow the path, we go from left to right
-          for (let i = valueParts.length - 1; i > 0; i--) {
-            try {
-              expressionGraph.addEdge(valueParts[i], valueParts[i - 1]);
-            } catch (error: any) {
-              console.warn(
-                `Error adding edge in expression value "${value}": ${error.message}`
-              );
-            }
-          }
-
-          // Register the expression graph
-          this.registry.registerGraph(expressionGraph);
-          console.log(`Created graph for expression: ${value}`);
-
-          // Register the assignment graph
-          this.registry.registerGraph(assignmentGraph);
-
-          // Connect the assignment graph to the expression graph
-          try {
-            this.registry.connectGraphs(assignmentGraph, expressionGraph);
-            console.log(
-              `Connected assignment graph to expression graph for: ${variable} = ${value}`
-            );
-          } catch (error: any) {
-            console.warn(
-              `Error connecting assignment graph to expression graph: ${error.message}`
-            );
-          }
-        }
+        this.handleExpressionAssignment(variable, value);
       }
     }
 
-    return this.registry;
+    return this.graph;
   }
 
   /**
-   * Generate a complete graph registry by connecting all graphs based on shared vertices
-   *
-   * @returns The fully connected graph registry
+   * Handle a simple assignment (non-expression value)
    */
-  generateGraphRegistry(
+  private handleSimpleAssignment(variable: string, value: string): void {
+    this.graph.addVertex(value);
+    this.addSafeEdge(variable, value);
+  }
+
+  /**
+   * Handle an assignment with an expression value
+   */
+  private handleExpressionAssignment(variable: string, value: string): void {
+    const valueParts = this.parseExpression(value);
+
+    if (valueParts.length === 0) {
+      console.warn(
+        `Empty value for assignment "${variable} = ${value}". Skipping.`
+      );
+      return;
+    }
+
+    if (valueParts.length === 1) {
+      this.handleSimpleAssignment(variable, value);
+      return;
+    }
+
+    this.addPartsAsVertices(valueParts);
+    this.connectPartsInReverseOrder(valueParts);
+    this.addSafeEdge(variable, valueParts[valueParts.length - 1]);
+  }
+
+  /**
+   * Safely adds an edge between two vertices in the graph
+   *
+   * @param source The source vertex to connect from
+   * @param destination The destination vertex to connect to
+   * @throws Will log a warning if edge cannot be added
+   */
+  addSafeEdge(source: string, destination: string): void {
+    try {
+      this.graph.addEdge(source, destination);
+      console.log(`Added edge for: ${source} -> ${destination}`);
+    } catch (error: any) {
+      console.warn(
+        `Error adding edge for: "${source} -> ${destination}": ${error.message}`
+      );
+    }
+  }
+
+  /**
+   * Generate a complete graph by connecting all graphs based on shared vertices
+   *
+   * @param assignments Map of variable names to their assigned values
+   * @param expressions Array of dot notation expressions to process
+   * @returns The fully connected graph
+   */
+  generateGraph(
     assignments: Map<string, string>,
     expressions: string[]
-  ): GraphRegistry {
+  ): DirectedChainGraph {
     this.generateGraphFromAssignments(assignments);
     this.generateGraphFromExpressions(expressions);
 
-    // Auto-connect all graphs based on shared vertices
-    this.registry.autoConnectAllGraphs();
-
-    return this.registry;
+    return this.graph;
   }
 }

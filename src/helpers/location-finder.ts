@@ -1,7 +1,7 @@
 import * as Glob from "glob";
 import * as fs from "fs";
 import { toKebabCase } from ".";
-import { GraphRegistryGenerator } from "./graph-generator";
+import { GraphGenerator } from "./graph-generator";
 
 export class LocationFinder {
   private documentPath?: string;
@@ -69,12 +69,22 @@ export class LocationFinder {
   }
 
   async findPathsByReference(reference: string) {
-    const filePaths = await Glob.glob(`**/${toKebabCase(reference)}.js`, {
-      cwd: this.documentPath,
-      absolute: true,
-    });
+    const kebabCaseReference = toKebabCase(reference);
+    const singularPattern = `**/${kebabCaseReference.replace(/s$/, "")}.js`;
+    const pluralPattern = `**/${kebabCaseReference.replace(/s$/, "")}s.js`;
 
-    return filePaths;
+    const patterns = [singularPattern, pluralPattern];
+
+    const filePaths = await Promise.all(
+      patterns.map((pattern) =>
+        Glob.glob(pattern, {
+          cwd: this.documentPath,
+          absolute: true,
+        })
+      )
+    );
+
+    return filePaths.flat();
   }
 
   async findFunctionLocation(functionName: string) {
@@ -94,16 +104,19 @@ export class LocationFinder {
 
       const allAssignments = this.findAllAssignments();
 
-      const graphRegistryGenerator = new GraphRegistryGenerator();
+      const graphGenerator = new GraphGenerator();
 
-      const graphRegistry = graphRegistryGenerator.generateGraphRegistry(
+      const graph = graphGenerator.generateGraph(
         allAssignments,
         functionCallExpressions
       );
 
-      const paths = graphRegistry.followVertexPath(functionName);
+      const paths = graph.followVertexPath(functionName);
 
       const reference = paths[paths.length - 5];
+      if (!reference) {
+        return null;
+      }
 
       const filePaths = await this.findPathsByReference(reference);
       if (!filePaths || filePaths.length === 0) {
@@ -133,69 +146,5 @@ export class LocationFinder {
     }
 
     return null;
-  }
-
-  getFunctionText(fileContent: string, line: number) {
-    const lines = fileContent.split("\n");
-
-    let functionText = "";
-    let braceCount = 0;
-    let functionStarted = false;
-    let inString = false;
-    let stringChar = "";
-
-    for (let i = line; i < lines.length; i++) {
-      const currentLine = lines[i];
-      functionText += currentLine + "\n";
-
-      // Process the line character by character
-      for (let j = 0; j < currentLine.length; j++) {
-        const char = currentLine[j];
-
-        // Handle string literals to avoid counting braces inside strings
-        if (
-          (char === '"' || char === "'" || char === "`") &&
-          (j === 0 || currentLine[j - 1] !== "\\")
-        ) {
-          if (!inString) {
-            inString = true;
-            stringChar = char;
-          } else if (char === stringChar) {
-            inString = false;
-          }
-        }
-
-        // Only count braces if we're not inside a string
-        if (!inString) {
-          if (char === "{") {
-            braceCount++;
-            functionStarted = true;
-          } else if (char === "}") {
-            braceCount--;
-          }
-        }
-      }
-
-      // Handle arrow functions and single-line functions
-      if (
-        !functionStarted &&
-        (currentLine.includes("=>") ||
-          currentLine.includes("function") ||
-          currentLine.match(/:\s*function/))
-      ) {
-        functionStarted = true;
-      }
-
-      // Check if function has ended
-      if (
-        functionStarted &&
-        (braceCount === 0 ||
-          (braceCount === 0 && currentLine.trim().endsWith(";")))
-      ) {
-        break;
-      }
-    }
-
-    return functionText.trim();
   }
 }
