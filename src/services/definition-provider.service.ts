@@ -1,15 +1,16 @@
 import * as Glob from "glob";
 import * as fs from "fs";
-import { toKebabCase } from ".";
-import { GraphGenerator } from "./graph-generator";
+import * as fuzz from "fuzzball";
+import { isKeyword, toKebabCase, toSingular } from "../utils";
+import { GraphGenerator } from "../helpers/graph-generator";
 
-export class LocationFinder {
-  private documentPath?: string;
-  private documentContent: string;
+export class DefinitionProviderService {
+  private readonly documentContent: string;
+  private readonly documentPath?: string;
 
   constructor(documentContent: string, documentPath?: string) {
-    this.documentPath = documentPath;
     this.documentContent = documentContent;
+    this.documentPath = documentPath;
   }
 
   private findAllAssignments() {
@@ -68,26 +69,53 @@ export class LocationFinder {
     return functionCallExpressions;
   }
 
-  async findPathsByReference(reference: string) {
-    const kebabCaseReference = toKebabCase(reference);
-    const singularPattern = `**/${kebabCaseReference.replace(/s$/, "")}.js`;
-    const pluralPattern = `**/${kebabCaseReference.replace(/s$/, "")}s.js`;
-
-    const patterns = [singularPattern, pluralPattern];
-
-    const filePaths = await Promise.all(
-      patterns.map((pattern) =>
-        Glob.glob(pattern, {
-          cwd: this.documentPath,
-          absolute: true,
-        })
-      )
+  private async findPathsByReference(
+    pathReference: string,
+    nameReference: string
+  ) {
+    const directMatchedFilePaths = await Glob.glob(
+      `**/${toKebabCase(nameReference)}.js`,
+      {
+        cwd: this.documentPath,
+        absolute: true,
+      }
     );
 
-    return filePaths.flat();
+    if (directMatchedFilePaths.length) {
+      return directMatchedFilePaths;
+    }
+
+    const globPathReference = toSingular(pathReference.split("-").pop() ?? "");
+
+    if (!globPathReference) {
+      return null;
+    }
+
+    const matchedFilePaths = await Glob.glob(`**/*-${globPathReference}.js`, {
+      cwd: this.documentPath,
+      absolute: true,
+    });
+
+    const choices = matchedFilePaths.map((filePath) => {
+      return filePath.split("/").pop();
+    });
+
+    const fuzzResults = fuzz.extract(nameReference, choices, {
+      scorer: fuzz.partial_ratio,
+    });
+
+    return fuzzResults
+      .map(([matchedName]) =>
+        matchedFilePaths.find((filePath) => filePath.includes(matchedName))
+      )
+      .filter((path): path is string => !!path);
   }
 
-  async findFunctionLocation(functionName: string) {
+  async findFunctionDefiniton(functionName: string) {
+    if (functionName.length > 30 || isKeyword(functionName)) {
+      return null;
+    }
+
     try {
       const functionMatchedLines = this.findFunctionMatchedLines(functionName);
       if (!functionMatchedLines.length) {
@@ -113,13 +141,21 @@ export class LocationFinder {
 
       const paths = graph.followVertexPath(functionName);
 
-      const reference = paths[paths.length - 5];
-      if (!reference) {
+      const pathReference = paths[paths.length - 3];
+      if (!pathReference) {
         return null;
       }
 
-      const filePaths = await this.findPathsByReference(reference);
-      if (!filePaths || filePaths.length === 0) {
+      const nameReference = paths[paths.length - 5];
+      if (!nameReference) {
+        return null;
+      }
+
+      const filePaths = await this.findPathsByReference(
+        pathReference,
+        nameReference
+      );
+      if (!filePaths?.length) {
         return null;
       }
 

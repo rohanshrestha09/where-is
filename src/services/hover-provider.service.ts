@@ -1,14 +1,29 @@
-import * as ts from "typescript";
+import ts from "typescript";
+import { isKeyword } from "../utils";
+import { DefinitionProviderService } from "./definition-provider.service";
 
-export class PreviewGenerator {
-  private text: string;
+export class HoverProviderService {
+  private readonly definitionProviderService: DefinitionProviderService;
 
-  constructor(text: string) {
-    this.text = text;
+  constructor(documentContent: string, documentPath?: string) {
+    this.definitionProviderService = new DefinitionProviderService(
+      documentContent,
+      documentPath
+    );
   }
 
-  generateFunctionPreview(line: number) {
-    const lines = this.text.split("\n");
+  async findFunctionBodyPreview(functionName: string) {
+    if (functionName.length > 30 || isKeyword(functionName)) {
+      return null;
+    }
+
+    const functionDefinition =
+      await this.definitionProviderService.findFunctionDefiniton(functionName);
+    if (!functionDefinition) {
+      return null;
+    }
+
+    const lines = functionDefinition.content.split("\n");
 
     let functionText = "";
     let braceCount = 0;
@@ -16,7 +31,7 @@ export class PreviewGenerator {
     let inString = false;
     let stringChar = "";
 
-    for (let i = line; i < lines.length; i++) {
+    for (let i = functionDefinition.line; i < lines.length; i++) {
       const currentLine = lines[i];
       functionText += currentLine + "\n";
 
@@ -71,9 +86,12 @@ export class PreviewGenerator {
     return functionText.trim();
   }
 
-  generateFunctionDefinitionPreview(line: number) {
-    // Use the generateFunctionPreview method to get the function text
-    const functionText = this.generateFunctionPreview(line);
+  async findFunctionDefinitionPreview(functionName: string) {
+    if (functionName.length > 30 || isKeyword(functionName)) {
+      return null;
+    }
+
+    const functionText = await this.findFunctionBodyPreview(functionName);
     if (!functionText) {
       return null;
     }
