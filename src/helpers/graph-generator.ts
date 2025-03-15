@@ -1,9 +1,13 @@
 import { DirectedChainGraph } from "../datastructures/graph";
 
 export class GraphGenerator {
-  private graph: DirectedChainGraph;
+  private readonly assignments: Map<string, string>;
+  private readonly expressions: string[];
+  private readonly graph: DirectedChainGraph;
 
-  constructor() {
+  constructor(assignments: Map<string, string>, expressions: string[]) {
+    this.assignments = assignments;
+    this.expressions = expressions;
     this.graph = new DirectedChainGraph();
   }
 
@@ -304,12 +308,9 @@ export class GraphGenerator {
    * @param expressions Array of dot notation expressions to process
    * @returns The fully connected graph
    */
-  generateGraph(
-    assignments: Map<string, string>,
-    expressions: string[]
-  ): DirectedChainGraph {
-    this.generateGraphFromAssignments(assignments);
-    this.generateGraphFromExpressions(expressions);
+  generateGraph(): DirectedChainGraph {
+    this.generateGraphFromAssignments(this.assignments);
+    this.generateGraphFromExpressions(this.expressions);
 
     return this.graph;
   }

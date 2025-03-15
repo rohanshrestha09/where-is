@@ -1,5 +1,6 @@
-export type FunctionLocation = {
-  content: string;
-  path: string;
-  line: number;
+export type ProviderProps = {
+  documentText: string;
+  documentPath?: string;
+  lineText: string;
+  functionName: string;
 };

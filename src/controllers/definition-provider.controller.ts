@@ -15,7 +15,10 @@ export class DefinitionProviderController {
         const wordRange = document.getWordRangeAtPosition(position);
         const word = document.getText(wordRange);
 
-        if (!word) {
+        // Get the entire line where the cursor is positioned
+        const lineText = document.lineAt(position.line).text.trim();
+
+        if (!word && !lineText) {
           return null;
         }
 
@@ -23,17 +26,19 @@ export class DefinitionProviderController {
 
         const workspaceFolders = vscode.workspace.workspaceFolders;
 
-        const cwd = workspaceFolders
+        const documentPath = workspaceFolders
           ? workspaceFolders[0].uri.fsPath
           : undefined;
 
-        const definitionProviderService = new DefinitionProviderService(
+        const definitionProviderService = new DefinitionProviderService({
           documentText,
-          cwd
-        );
+          documentPath,
+          functionName,
+          lineText,
+        });
 
         const functionDefinition =
-          await definitionProviderService.findFunctionDefiniton(functionName);
+          await definitionProviderService.findFunctionDefiniton();
 
         if (!functionDefinition) {
           return;

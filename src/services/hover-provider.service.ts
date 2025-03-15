@@ -1,24 +1,24 @@
 import ts from "typescript";
 import { isKeyword } from "../utils";
+import { ProviderProps } from "../types";
 import { DefinitionProviderService } from "./definition-provider.service";
 
 export class HoverProviderService {
+  private readonly functionName: string;
   private readonly definitionProviderService: DefinitionProviderService;
 
-  constructor(documentContent: string, documentPath?: string) {
-    this.definitionProviderService = new DefinitionProviderService(
-      documentContent,
-      documentPath
-    );
+  constructor(props: ProviderProps) {
+    this.functionName = props.functionName;
+    this.definitionProviderService = new DefinitionProviderService(props);
   }
 
-  async findFunctionBodyPreview(functionName: string) {
-    if (functionName.length > 30 || isKeyword(functionName)) {
+  async findFunctionBodyPreview() {
+    if (this.functionName.length > 30 || isKeyword(this.functionName)) {
       return null;
     }
 
     const functionDefinition =
-      await this.definitionProviderService.findFunctionDefiniton(functionName);
+      await this.definitionProviderService.findFunctionDefiniton();
     if (!functionDefinition) {
       return null;
     }
@@ -86,12 +86,12 @@ export class HoverProviderService {
     return functionText.trim();
   }
 
-  async findFunctionDefinitionPreview(functionName: string) {
-    if (functionName.length > 30 || isKeyword(functionName)) {
+  async findFunctionDefinitionPreview() {
+    if (this.functionName.length > 30 || isKeyword(this.functionName)) {
       return null;
     }
 
-    const functionText = await this.findFunctionBodyPreview(functionName);
+    const functionText = await this.findFunctionBodyPreview();
     if (!functionText) {
       return null;
     }
@@ -111,9 +111,31 @@ export class HoverProviderService {
     }
 
     // Create a TypeScript program with the source file
-    const program = ts.createProgram(["temp.js"], {});
+    const program = ts.createProgram({
+      rootNames: ["temp.js"],
+      options: {
+        allowJs: true,
+        target: ts.ScriptTarget.Latest,
+        module: ts.ModuleKind.CommonJS,
+      },
+      host: {
+        fileExists: (fileName) => fileName === "temp.js",
+        readFile: (fileName) =>
+          fileName === "temp.js" ? functionText : undefined,
+        getSourceFile: (fileName, languageVersion) =>
+          fileName === "temp.js" ? sourceFile : undefined,
+        writeFile: () => {},
+        getDefaultLibFileName: () => "lib.d.ts",
+        useCaseSensitiveFileNames: () => true,
+        getCanonicalFileName: (fileName) => fileName,
+        getCurrentDirectory: () => "",
+        getNewLine: () => "\n",
+        getDirectories: () => [],
+      },
+    });
 
     const typeChecker = program.getTypeChecker();
+
     // Cast functionNode to SignatureDeclaration to ensure proper type handling
     const signature = typeChecker.getSignatureFromDeclaration(functionNode);
     if (!signature) {
@@ -126,7 +148,11 @@ export class HoverProviderService {
       return `${param.name}: ${typeChecker.typeToString(paramType)}`;
     });
 
-    return `(${parameters.join(", ")}) => ${returnType}`;
+    // Check if the function is async and wrap return type in Promise if needed
+    const isAsync = ts.getCombinedModifierFlags(functionNode) & ts.ModifierFlags.Async;
+    const finalReturnType = isAsync ? `Promise<${returnType}>` : returnType;
+
+    return `const ${this.functionName}: (${parameters.join(", ")}) => ${finalReturnType}`;
   }
 
   private findFunctionNode(

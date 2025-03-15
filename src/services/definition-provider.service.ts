@@ -1,72 +1,64 @@
 import * as Glob from "glob";
 import * as fs from "fs";
 import * as fuzz from "fuzzball";
+import { ProviderProps } from "../types";
 import { isKeyword, toKebabCase, toSingular } from "../utils";
 import { GraphGenerator } from "../helpers/graph-generator";
 
 export class DefinitionProviderService {
-  private readonly documentContent: string;
+  private readonly documentText: string;
   private readonly documentPath?: string;
+  private readonly lineText: string;
+  private readonly functionName: string;
 
-  constructor(documentContent: string, documentPath?: string) {
-    this.documentContent = documentContent;
-    this.documentPath = documentPath;
+  constructor(props: ProviderProps) {
+    this.documentText = props.documentText;
+    this.documentPath = props.documentPath;
+    this.lineText = props.lineText;
+    this.functionName = props.functionName;
   }
 
   private findAllAssignments() {
     const assignmentRegex = /(const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(.*?);/g;
     const assignments = new Map<string, string>();
     let match;
-    while ((match = assignmentRegex.exec(this.documentContent)) !== null) {
+    while ((match = assignmentRegex.exec(this.documentText)) !== null) {
       assignments.set(match[2], match[3]);
     }
     return assignments;
   }
 
-  private findFunctionMatchedLines(functionName: string) {
-    const functionCallRegex = new RegExp(`\\b${functionName}\\b`, "g");
+  private findFunctionCallExpression() {
+    const line = this.lineText.trim();
 
-    const functionLineMatches = this.documentContent
-      .split("\n")
-      .flatMap((line) => {
-        const matches = [];
-        let match;
-        while ((match = functionCallRegex.exec(line)) !== null) {
-          matches.push(`${line.slice(0, match.index).trim()}${match[0]}`);
-        }
-        return matches;
-      });
+    // Remove leading keywords, assignment part, and await
+    const cleanedLine = line
+      .replace(/^\s*(const|let|var)\s+[a-zA-Z0-9_$]+\s*=\s*(await\s+)?/, "")
+      .replace(/^await\s+/, "")
+      .replace(/^\s*[a-zA-Z0-9_$]+\s*:\s*/, ""); // Remove object property assignment
 
-    return functionLineMatches;
-  }
+    // Remove trailing comma and anything after it
+    const withoutComma = cleanedLine.split(",")[0].trim();
 
-  private findFunctionCallExpression(
-    functionName: string,
-    functionMatchedLines: string[]
-  ) {
-    const functionCallExpressions: string[] = [];
+    // Remove trailing parentheses and anything after them
+    const withoutParentheses = withoutComma.split("(")[0].trim();
 
-    for (let line of functionMatchedLines) {
-      const variableNames: string[] = [];
+    const parts = withoutParentheses
+      .split(".")
+      .map((part) => part.trim())
+      .filter((part) => part);
 
-      let currentIndex = line.lastIndexOf(functionName) - 1;
-
-      while (currentIndex >= 0) {
-        const char = line[currentIndex];
-        if (char === ".") {
-          variableNames.unshift(line.slice(currentIndex + 1).trim());
-          line = line.slice(0, currentIndex);
-        } else if (!/[a-zA-Z0-9_$]/.test(char)) {
-          variableNames.unshift(line.slice(currentIndex + 1).trim());
-          break;
-        }
-        currentIndex--;
+    const lastPart = parts[parts.length - 1];
+    if (lastPart) {
+      const match = lastPart.match(/[^a-zA-Z0-9_$]+/);
+      if (match) {
+        parts[parts.length - 1] = lastPart.slice(
+          match.index! + match[0].length
+        );
       }
-
-      functionCallExpressions.push(variableNames.join("."));
     }
 
-    return functionCallExpressions;
+    return parts.join(".");
   }
 
   private async findPathsByReference(
@@ -85,7 +77,9 @@ export class DefinitionProviderService {
       return directMatchedFilePaths;
     }
 
-    const globPathReference = toSingular(pathReference.split("-").pop() ?? "");
+    const globPathReference = toSingular(
+      pathReference.replaceAll("core-", "") ?? ""
+    );
 
     if (!globPathReference) {
       return null;
@@ -111,35 +105,46 @@ export class DefinitionProviderService {
       .filter((path): path is string => !!path);
   }
 
-  async findFunctionDefiniton(functionName: string) {
-    if (functionName.length > 30 || isKeyword(functionName)) {
+  private async findFunctionLocation(filePath: string) {
+    const fileStream = fs.createReadStream(filePath, { encoding: "utf-8" });
+    let fileContent = "";
+    let line = 0;
+
+    const regex = new RegExp(
+      `(?:exports\\.|module\\.exports\\.)?${this.functionName}\\s*=`,
+      "g"
+    );
+
+    for await (const chunk of fileStream) {
+      fileContent += chunk;
+      const match = regex.exec(fileContent);
+      if (match) {
+        line = fileContent.slice(0, match.index).split("\n").length - 1;
+        return { content: fileContent, path: filePath, line };
+      }
+    }
+  }
+
+  async findFunctionDefiniton() {
+    if (this.functionName.length > 30 || isKeyword(this.functionName)) {
       return null;
     }
 
     try {
-      const functionMatchedLines = this.findFunctionMatchedLines(functionName);
-      if (!functionMatchedLines.length) {
-        return null;
-      }
-
-      const functionCallExpressions = this.findFunctionCallExpression(
-        functionName,
-        functionMatchedLines
-      );
-      if (!functionCallExpressions.length) {
+      const functionCallExpression = this.findFunctionCallExpression();
+      if (!functionCallExpression) {
         return null;
       }
 
       const allAssignments = this.findAllAssignments();
 
-      const graphGenerator = new GraphGenerator();
+      const graphGenerator = new GraphGenerator(allAssignments, [
+        functionCallExpression,
+      ]);
 
-      const graph = graphGenerator.generateGraph(
-        allAssignments,
-        functionCallExpressions
-      );
+      const graph = graphGenerator.generateGraph();
 
-      const paths = graph.followVertexPath(functionName);
+      const paths = graph.followVertexPath(this.functionName);
 
       const pathReference = paths[paths.length - 3];
       if (!pathReference) {
@@ -160,23 +165,8 @@ export class DefinitionProviderService {
       }
 
       const filePath = filePaths[0];
-      const fileStream = fs.createReadStream(filePath, { encoding: "utf-8" });
-      let fileContent = "";
-      let line = 0;
 
-      const regex = new RegExp(
-        `(?:exports\\.|module\\.exports\\.)?${functionName}\\s*=`,
-        "g"
-      );
-
-      for await (const chunk of fileStream) {
-        fileContent += chunk;
-        const match = regex.exec(fileContent);
-        if (match) {
-          line = fileContent.slice(0, match.index).split("\n").length - 1;
-          return { content: fileContent, path: filePath, line };
-        }
-      }
+      return this.findFunctionLocation(filePath);
     } catch (err) {
       console.error(`Error reading file:`, err);
     }
