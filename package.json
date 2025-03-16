@@ -1,6 +1,6 @@
 {
-  "name": "portpro-backend-types",
-  "displayName": "portpro-backend-types",
+  "name": "portpro-extensions",
+  "displayName": "portpro-extensions",
   "description": "",
   "version": "0.0.1",
   "engines": {
@@ -11,17 +11,36 @@
   ],
   "activationEvents": [
     "onLanguage:javascript",
-    "onLanguage:typescript",
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "portpro-backend-types.helloWorld",
-        "title": "Hello World"
-      }
-    ]
+    "configuration": {
+      "title": "PortPro",
+      "properties": {
+        "portPro.previewMode": {
+          "type": "string",
+          "enum": [
+            "off",
+            "definitionPreview",
+            "fullPreview"
+          ],
+          "markdownEnumDescriptions": [
+            "Disable Preview",
+            "Only show definition preview",
+            "Show full preview"
+          ],
+          "default": "fullPreview",
+          "description": "Choose the preview mode"
+        }
+      },
+      "commands": [
+        {
+          "command": "portpro-backend-types.helloWorld",
+          "title": "Hello World"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

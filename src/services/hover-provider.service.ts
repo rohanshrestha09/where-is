@@ -1,19 +1,20 @@
 import ts from "typescript";
-import { isKeyword } from "../utils";
 import { ProviderProps } from "../types";
 import { DefinitionProviderService } from "./definition-provider.service";
+import { BaseProviderService } from "./base-provider.service";
 
-export class HoverProviderService {
+export class HoverProviderService extends BaseProviderService {
   private readonly functionName: string;
   private readonly definitionProviderService: DefinitionProviderService;
 
   constructor(props: ProviderProps) {
+    super();
     this.functionName = props.functionName;
     this.definitionProviderService = new DefinitionProviderService(props);
   }
 
   async findFunctionBodyPreview() {
-    if (this.functionName.length > 30 || isKeyword(this.functionName)) {
+    if (!this.isValidFunctionName(this.functionName)) {
       return null;
     }
 
@@ -83,23 +84,27 @@ export class HoverProviderService {
       }
     }
 
-    return functionText.trim();
+    return {
+      text: functionText.trim(),
+      filePath: functionDefinition.path,
+      line: functionDefinition.line,
+    };
   }
 
   async findFunctionDefinitionPreview() {
-    if (this.functionName.length > 30 || isKeyword(this.functionName)) {
+    if (!this.isValidFunctionName(this.functionName)) {
       return null;
     }
 
-    const functionText = await this.findFunctionBodyPreview();
-    if (!functionText) {
+    const functionPreview = await this.findFunctionBodyPreview();
+    if (!functionPreview) {
       return null;
     }
 
     // Create a source file from the function text
     const sourceFile = ts.createSourceFile(
       "temp.js", // Use .js extension for JavaScript files
-      functionText,
+      functionPreview.text,
       ts.ScriptTarget.Latest,
       true
     );
@@ -121,7 +126,7 @@ export class HoverProviderService {
       host: {
         fileExists: (fileName) => fileName === "temp.js",
         readFile: (fileName) =>
-          fileName === "temp.js" ? functionText : undefined,
+          fileName === "temp.js" ? functionPreview.text : undefined,
         getSourceFile: (fileName, languageVersion) =>
           fileName === "temp.js" ? sourceFile : undefined,
         writeFile: () => {},
@@ -149,10 +154,17 @@ export class HoverProviderService {
     });
 
     // Check if the function is async and wrap return type in Promise if needed
-    const isAsync = ts.getCombinedModifierFlags(functionNode) & ts.ModifierFlags.Async;
+    const isAsync =
+      ts.getCombinedModifierFlags(functionNode) & ts.ModifierFlags.Async;
     const finalReturnType = isAsync ? `Promise<${returnType}>` : returnType;
 
-    return `const ${this.functionName}: (${parameters.join(", ")}) => ${finalReturnType}`;
+    return {
+      text: `const ${this.functionName}: (${parameters.join(
+        ", "
+      )}) => ${finalReturnType}`,
+      line: functionPreview.line,
+      filePath: functionPreview.filePath,
+    };
   }
 
   private findFunctionNode(

@@ -1,3 +1,5 @@
+export const MAX_FUNCTION_LENGTH = 40;
+
 export const keywords = [
   "break",
   "case",

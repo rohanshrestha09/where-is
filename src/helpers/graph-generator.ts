@@ -84,6 +84,9 @@ export class GraphGenerator {
    * @returns Array of parts in the expression
    */
   private parseExpression(expression: string): string[] {
+    // Remove leading await keyword
+    expression = expression.replace(/^\s*await\s+/, "");
+
     const parts: string[] = [];
     let currentPart = "";
     let inBrackets = false;

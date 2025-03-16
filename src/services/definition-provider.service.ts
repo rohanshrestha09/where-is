@@ -2,24 +2,26 @@ import * as Glob from "glob";
 import * as fs from "fs";
 import * as fuzz from "fuzzball";
 import { ProviderProps } from "../types";
-import { isKeyword, toKebabCase, toSingular } from "../utils";
 import { GraphGenerator } from "../helpers/graph-generator";
+import { BaseProviderService } from "./base-provider.service";
 
-export class DefinitionProviderService {
+export class DefinitionProviderService extends BaseProviderService {
   private readonly documentText: string;
   private readonly documentPath?: string;
   private readonly lineText: string;
   private readonly functionName: string;
 
   constructor(props: ProviderProps) {
+    super();
     this.documentText = props.documentText;
     this.documentPath = props.documentPath;
     this.lineText = props.lineText;
     this.functionName = props.functionName;
   }
 
-  private findAllAssignments() {
-    const assignmentRegex = /(const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(.*?);/g;
+  protected findAllAssignments() {
+    const assignmentRegex =
+      /(const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(.*?)(?:;|\n|$)/g;
     const assignments = new Map<string, string>();
     let match;
     while ((match = assignmentRegex.exec(this.documentText)) !== null) {
@@ -31,17 +33,20 @@ export class DefinitionProviderService {
   private findFunctionCallExpression() {
     const line = this.lineText.trim();
 
-    // Remove leading keywords, assignment part, and await
+    // Remove destructuring assignment pattern and leading keywords
     const cleanedLine = line
-      .replace(/^\s*(const|let|var)\s+[a-zA-Z0-9_$]+\s*=\s*(await\s+)?/, "")
-      .replace(/^await\s+/, "")
-      .replace(/^\s*[a-zA-Z0-9_$]+\s*:\s*/, ""); // Remove object property assignment
+      .replace(/^\s*(const|let|var)\s+\[.*?\]\s*=\s*(await\s+)?/, "") // Handle array destructuring
+      .replace(
+        /^\s*(const|let|var)\s+([a-zA-Z0-9_$]+|\[.*?\])\s*=\s*(await\s+)?|^return\s+await\s+|^await\s+|^\s*return\s+/,
+        ""
+      )
+      .replace(/^\s*[a-zA-Z0-9_$]+\s*:\s*/, "");
 
     // Remove trailing comma and anything after it
     const withoutComma = cleanedLine.split(",")[0].trim();
 
-    // Remove trailing parentheses and anything after them
-    const withoutParentheses = withoutComma.split("(")[0].trim();
+    // Remove trailing parentheses and their contents
+    const withoutParentheses = withoutComma.replace(/\(.*$/, "").trim();
 
     const parts = withoutParentheses
       .split(".")
@@ -61,15 +66,16 @@ export class DefinitionProviderService {
     return parts.join(".");
   }
 
-  private async findPathsByReference(
+  private async findFilePathsByReference(
     pathReference: string,
     nameReference: string
   ) {
     const directMatchedFilePaths = await Glob.glob(
-      `**/${toKebabCase(nameReference)}.js`,
+      `**/${this.convertToKebabCase(nameReference)}.js`,
       {
         cwd: this.documentPath,
         absolute: true,
+        ignore: "**/node_modules/**",
       }
     );
 
@@ -77,10 +83,7 @@ export class DefinitionProviderService {
       return directMatchedFilePaths;
     }
 
-    const globPathReference = toSingular(
-      pathReference.replaceAll("core-", "") ?? ""
-    );
-
+    const globPathReference = this.getGlobPathReference(pathReference);
     if (!globPathReference) {
       return null;
     }
@@ -88,11 +91,12 @@ export class DefinitionProviderService {
     const matchedFilePaths = await Glob.glob(`**/*-${globPathReference}.js`, {
       cwd: this.documentPath,
       absolute: true,
+      ignore: "**/node_modules/**",
     });
 
-    const choices = matchedFilePaths.map((filePath) => {
-      return filePath.split("/").pop();
-    });
+    const choices = matchedFilePaths.map((filePath) =>
+      filePath.split("/").pop()
+    );
 
     const fuzzResults = fuzz.extract(nameReference, choices, {
       scorer: fuzz.partial_ratio,
@@ -105,13 +109,43 @@ export class DefinitionProviderService {
       .filter((path): path is string => !!path);
   }
 
+  private async findValidFilePath(nameReference: string, filePaths: string[]) {
+    const checkFile = async (filePath: string) => {
+      for await (const { content } of this.readFileReverseStream(filePath)) {
+        if (
+          content
+            .trim()
+            .match(new RegExp(`\\w+Name:?\\s*['"]${nameReference}['"]`))
+        ) {
+          return filePath;
+        }
+      }
+      return null;
+    };
+
+    const batchSize = 1;
+    for (let i = 0; i < filePaths.length; i += batchSize) {
+      const batch = filePaths.slice(i, i + batchSize);
+      try {
+        const validPath = await Promise.any(batch.map(checkFile));
+        if (validPath) {
+          return validPath;
+        }
+      } catch (e) {}
+    }
+    return null;
+  }
+
   private async findFunctionLocation(filePath: string) {
     const fileStream = fs.createReadStream(filePath, { encoding: "utf-8" });
     let fileContent = "";
     let line = 0;
 
     const regex = new RegExp(
-      `(?:exports\\.|module\\.exports\\.)?${this.functionName}\\s*=`,
+      `(?:function\\s+${this.functionName}\\s*\\([^)]*\\)\\s*{|` + // Function declarations
+        `${this.functionName}\\s*=\\s*(?:async\\s*)?\\(?[^)]*\\)?\\s*=>\\s*{?|` + // Arrow functions (handles default params)
+        `${this.functionName}\\s*:\\s*(?:async\\s*)?(?:function\\s*)?\\([^)]*\\)\\s*{?|` + // Object methods
+        `${this.functionName}\\s*=\\s*(?:async\\s*)?function\\s*\\([^)]*\\)\\s*{?)`, // Function expressions
       "g"
     );
 
@@ -123,10 +157,12 @@ export class DefinitionProviderService {
         return { content: fileContent, path: filePath, line };
       }
     }
+
+    return null;
   }
 
   async findFunctionDefiniton() {
-    if (this.functionName.length > 30 || isKeyword(this.functionName)) {
+    if (!this.isValidFunctionName(this.functionName)) {
       return null;
     }
 
@@ -156,7 +192,7 @@ export class DefinitionProviderService {
         return null;
       }
 
-      const filePaths = await this.findPathsByReference(
+      const filePaths = await this.findFilePathsByReference(
         pathReference,
         nameReference
       );
@@ -164,11 +200,14 @@ export class DefinitionProviderService {
         return null;
       }
 
-      const filePath = filePaths[0];
+      const filePath = await this.findValidFilePath(nameReference, filePaths);
+      if (!filePath) {
+        return null;
+      }
 
       return this.findFunctionLocation(filePath);
     } catch (err) {
-      console.error(`Error reading file:`, err);
+      console.error(`Error locating function definition:`, err);
     }
 
     return null;
