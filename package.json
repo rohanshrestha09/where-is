@@ -1,6 +1,6 @@
 {
-  "name": "portpro-extensions",
-  "displayName": "portpro-extensions",
+  "name": "where-is",
+  "displayName": "where-is",
   "description": "",
   "version": "0.0.1",
   "engines": {
@@ -16,9 +16,9 @@
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
-      "title": "PortPro",
+      "title": "Where is?",
       "properties": {
-        "portPro.previewMode": {
+        "whereIs.previewMode": {
           "type": "string",
           "enum": [
             "off",
@@ -33,13 +33,7 @@
           "default": "fullPreview",
           "description": "Choose the preview mode"
         }
-      },
-      "commands": [
-        {
-          "command": "portpro-backend-types.helloWorld",
-          "title": "Hello World"
-        }
-      ]
+      }
     }
   },
   "scripts": {
@@ -70,6 +64,8 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "acorn": "^8.14.1",
+    "acorn-walk": "^8.3.4",
     "fuzzball": "^2.1.6",
     "glob": "^11.0.1"
   }

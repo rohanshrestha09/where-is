@@ -1,6 +1,8 @@
 import * as Glob from "glob";
 import * as fs from "fs";
 import * as fuzz from "fuzzball";
+import * as acorn from "acorn";
+import * as acornWalk from "acorn-walk";
 import { ProviderProps } from "../types";
 import { GraphGenerator } from "../helpers/graph-generator";
 import { BaseProviderService } from "./base-provider.service";
@@ -20,14 +22,46 @@ export class DefinitionProviderService extends BaseProviderService {
   }
 
   protected findAllAssignments() {
-    const assignmentRegex =
-      /(const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(.*?)(?:;|\n|$)/g;
-    const assignments = new Map<string, string>();
-    let match;
-    while ((match = assignmentRegex.exec(this.documentText)) !== null) {
-      assignments.set(match[2], match[3]);
+    try {
+      const ast = acorn.parse(this.documentText, {
+        ecmaVersion: "latest",
+        sourceType: "module",
+      });
+
+      const assignments = new Map<string, string>();
+      const relevantVariables = new Set<string>();
+
+      // First pass: collect variables that are part of member expressions
+      acornWalk.simple(ast, {
+        MemberExpression: (node: acorn.MemberExpression) => {
+          if (node.object.type === "Identifier") {
+            relevantVariables.add(node.object.name);
+          }
+        },
+      });
+
+      // Second pass: only collect assignments for relevant variables
+      acornWalk.simple(ast, {
+        VariableDeclarator: (node: acorn.VariableDeclarator) => {
+          if (
+            node.id.type === "Identifier" &&
+            node.init?.type !== "FunctionExpression" &&
+            node.init?.type !== "ArrowFunctionExpression" &&
+            relevantVariables.has(node.id.name)
+          ) {
+            assignments.set(
+              node.id.name,
+              this.documentText.slice(node.init?.start, node.init?.end)
+            );
+          }
+        },
+      });
+
+      return assignments;
+    } catch (error) {
+      console.error("Error parsing assignments:", error);
+      return new Map<string, string>();
     }
-    return assignments;
   }
 
   private findFunctionCallExpression() {
@@ -64,6 +98,66 @@ export class DefinitionProviderService extends BaseProviderService {
     }
 
     return parts.join(".");
+  }
+
+  private async findFunctionLocation(filePath: string) {
+    const content = await fs.promises.readFile(filePath, "utf-8");
+
+    try {
+      const ast = acorn.parse(content, {
+        ecmaVersion: "latest",
+        sourceType: "module",
+        locations: true,
+      });
+
+      let functionNode: acorn.Node | null = null;
+
+      acornWalk.simple(ast, {
+        FunctionDeclaration: (
+          node: acorn.FunctionDeclaration | acorn.AnonymousFunctionDeclaration
+        ) => {
+          if (
+            node.id?.type === "Identifier" &&
+            node.id.name === this.functionName
+          ) {
+            functionNode = node;
+          }
+        },
+        VariableDeclarator: (node: acorn.VariableDeclarator) => {
+          if (
+            node.id.type === "Identifier" &&
+            node.id.name === this.functionName &&
+            (node.init?.type === "FunctionExpression" ||
+              node.init?.type === "ArrowFunctionExpression")
+          ) {
+            functionNode = node;
+          }
+        },
+        Property: (node: acorn.Property | acorn.AssignmentProperty) => {
+          if (
+            node.key.type === "Identifier" &&
+            node.key.name === this.functionName &&
+            (node.value.type === "FunctionExpression" ||
+              node.value.type === "ArrowFunctionExpression")
+          ) {
+            functionNode = node;
+          }
+        },
+      });
+
+      if (functionNode) {
+        functionNode = functionNode as acorn.Node;
+        const path = filePath;
+        const line = functionNode.loc?.start?.line ?? 0;
+        const text = content.slice(functionNode.start, functionNode.end);
+        const loc = text.split("\n").length;
+        return { content, path, line, text, loc };
+      }
+    } catch (error) {
+      console.error("Error parsing function location:", error);
+    }
+
+    return null;
   }
 
   private async findFilePathsByReference(
@@ -133,31 +227,6 @@ export class DefinitionProviderService extends BaseProviderService {
         }
       } catch (e) {}
     }
-    return null;
-  }
-
-  private async findFunctionLocation(filePath: string) {
-    const fileStream = fs.createReadStream(filePath, { encoding: "utf-8" });
-    let fileContent = "";
-    let line = 0;
-
-    const regex = new RegExp(
-      `(?:function\\s+${this.functionName}\\s*\\([^)]*\\)\\s*{|` + // Function declarations
-        `${this.functionName}\\s*=\\s*(?:async\\s*)?\\(?[^)]*\\)?\\s*=>\\s*{?|` + // Arrow functions (handles default params)
-        `${this.functionName}\\s*:\\s*(?:async\\s*)?(?:function\\s*)?\\([^)]*\\)\\s*{?|` + // Object methods
-        `${this.functionName}\\s*=\\s*(?:async\\s*)?function\\s*\\([^)]*\\)\\s*{?)`, // Function expressions
-      "g"
-    );
-
-    for await (const chunk of fileStream) {
-      fileContent += chunk;
-      const match = regex.exec(fileContent);
-      if (match) {
-        line = fileContent.slice(0, match.index).split("\n").length - 1;
-        return { content: fileContent, path: filePath, line };
-      }
-    }
-
     return null;
   }
 

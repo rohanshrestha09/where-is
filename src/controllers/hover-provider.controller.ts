@@ -1,57 +1,16 @@
 import * as vscode from "vscode";
-import { HoverProviderService } from "../services/hover-provider.service";
+import { DefinitionProviderService } from "../services/definition-provider.service";
 
 export class HoverProviderController {
   constructor(private readonly store: Map<string, vscode.Hover>) {}
 
-  private getDocumentInfo(
-    document: vscode.TextDocument,
-    position: vscode.Position
-  ) {
-    const documentText = document.getText();
-    const wordRange = document.getWordRangeAtPosition(position);
-    const word = document.getText(wordRange);
-    const lineText = document.lineAt(position.line).text.trim();
-    return { documentText, word, lineText };
-  }
-
-  private getWorkspacePath() {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    return workspaceFolders ? workspaceFolders[0].uri.fsPath : undefined;
-  }
-
-  private async getFunctionPreview(options: {
-    documentText: string;
-    documentPath?: string;
-    functionName: string;
-    lineText: string;
-  }) {
-    const previewMode = vscode.workspace
-      .getConfiguration("portPro")
-      .get("previewMode");
-
-    const hoverProviderService = new HoverProviderService(options);
-
-    switch (previewMode) {
-      case "off":
-        return null;
-      case "fullPreview":
-        return await hoverProviderService.findFunctionBodyPreview();
-      case "definitionPreview":
-        return await hoverProviderService.findFunctionDefinitionPreview();
-    }
-
-    return null;
-  }
-
   registerHoverProvider() {
     return vscode.languages.registerHoverProvider("javascript", {
       provideHover: async (document, position) => {
-        const {
-          documentText,
-          word: functionName,
-          lineText,
-        } = this.getDocumentInfo(document, position);
+        const documentText = document.getText();
+        const wordRange = document.getWordRangeAtPosition(position);
+        const functionName = document.getText(wordRange);
+        const lineText = document.lineAt(position.line).text.trim();
 
         if (!functionName && !lineText) {
           return null;
@@ -65,33 +24,40 @@ export class HoverProviderController {
 
         const startTime = performance.now();
 
-        const documentPath = this.getWorkspacePath();
-        const functionPreview = await this.getFunctionPreview({
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        const documentPath = workspaceFolders
+          ? workspaceFolders[0].uri.fsPath
+          : undefined;
+
+        const definitionProviderService = new DefinitionProviderService({
           documentText,
           documentPath,
           functionName,
           lineText,
         });
-        if (!functionPreview) {
+
+        const functionDefinition =
+          await definitionProviderService.findFunctionDefiniton();
+        if (!functionDefinition) {
           return null;
         }
 
         const timeTaken = Math.round(performance.now() - startTime);
 
-        if (!functionPreview) {
+        if (!functionDefinition) {
           return null;
         }
 
         const hover = new vscode.Hover({
           language: "javascript",
-          value: functionPreview.text,
+          value: functionDefinition.text,
         });
 
         const sourceMarkdown = new vscode.MarkdownString(
-          `[\`${functionPreview.filePath}:${
-            functionPreview.line + 1
-          }\`](${vscode.Uri.file(functionPreview.filePath)}#L${
-            functionPreview.line + 1
+          `[\`${functionDefinition.path}:${
+            functionDefinition.line
+          }\`](${vscode.Uri.file(functionDefinition.path)}#L${
+            functionDefinition.line
           }) $(go-to-file)`
         );
         sourceMarkdown.supportThemeIcons = true;
@@ -100,7 +66,7 @@ export class HoverProviderController {
 
         hover.contents.unshift(
           new vscode.MarkdownString(
-            `\`\`\`\nTime taken: ${timeTaken}ms\n\`\`\``
+            `\`\`\`\nTime taken: ${timeTaken}ms, Line of Code: ${functionDefinition.loc}\n\`\`\``
           )
         );
 
