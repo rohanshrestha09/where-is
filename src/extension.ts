@@ -10,11 +10,16 @@ export function activate(context: vscode.ExtensionContext) {
   const definitionProviderController = new DefinitionProviderController(
     locationStore
   );
-  const definitionProvider =
-    definitionProviderController.registerDefinitionProvider();
+  const definitionProvider = vscode.languages.registerDefinitionProvider(
+    "javascript",
+    definitionProviderController
+  );
 
   const hoverProviderController = new HoverProviderController(hoverStore);
-  const hoverProvider = hoverProviderController.registerHoverProvider();
+  const hoverProvider = vscode.languages.registerHoverProvider(
+    "javascript",
+    hoverProviderController
+  );
 
   context.subscriptions.push(definitionProvider);
   context.subscriptions.push(hoverProvider);

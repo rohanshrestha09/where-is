@@ -1,38 +1,39 @@
-import * as Glob from "glob";
 import * as fs from "fs";
+import * as Glob from "glob";
 import * as fuzz from "fuzzball";
 import * as acorn from "acorn";
 import * as acornWalk from "acorn-walk";
-import { ProviderProps } from "../types";
 import { GraphGenerator } from "../helpers/graph-generator";
 import { BaseProviderService } from "./base-provider.service";
 
 export class DefinitionProviderService extends BaseProviderService {
+  private readonly cAST: acorn.Program;
   private readonly documentText: string;
-  private readonly documentPath?: string;
-  private readonly lineText: string;
+  private readonly workspacePath?: string;
   private readonly functionName: string;
 
-  constructor(props: ProviderProps) {
+  constructor(props: {
+    documentText: string;
+    functionName: string;
+    workspacePath?: string;
+  }) {
     super();
+    this.cAST = acorn.parse(props.documentText, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+    });
     this.documentText = props.documentText;
-    this.documentPath = props.documentPath;
-    this.lineText = props.lineText;
+    this.workspacePath = props.workspacePath;
     this.functionName = props.functionName;
   }
 
   protected findAllAssignments() {
     try {
-      const ast = acorn.parse(this.documentText, {
-        ecmaVersion: "latest",
-        sourceType: "module",
-      });
-
       const assignments = new Map<string, string>();
       const relevantVariables = new Set<string>();
 
       // First pass: collect variables that are part of member expressions
-      acornWalk.simple(ast, {
+      acornWalk.simple(this.cAST, {
         MemberExpression: (node: acorn.MemberExpression) => {
           if (node.object.type === "Identifier") {
             relevantVariables.add(node.object.name);
@@ -41,7 +42,7 @@ export class DefinitionProviderService extends BaseProviderService {
       });
 
       // Second pass: only collect assignments for relevant variables
-      acornWalk.simple(ast, {
+      acornWalk.simple(this.cAST, {
         VariableDeclarator: (node: acorn.VariableDeclarator) => {
           if (
             node.id.type === "Identifier" &&
@@ -65,54 +66,53 @@ export class DefinitionProviderService extends BaseProviderService {
   }
 
   private findFunctionCallExpression() {
-    const line = this.lineText.trim();
+    try {
+      let functionCallParts: string[] = [];
 
-    // Remove destructuring assignment pattern and leading keywords
-    const cleanedLine = line
-      .replace(/^\s*(const|let|var)\s+\[.*?\]\s*=\s*(await\s+)?/, "") // Handle array destructuring
-      .replace(
-        /^\s*(const|let|var)\s+([a-zA-Z0-9_$]+|\[.*?\])\s*=\s*(await\s+)?|^return\s+await\s+|^await\s+|^\s*return\s+/,
-        ""
-      )
-      .replace(/^\s*[a-zA-Z0-9_$]+\s*:\s*/, "");
+      const extractChain = (node: acorn.MemberExpression): string[] => {
+        const parts: string[] = [];
 
-    // Remove trailing comma and anything after it
-    const withoutComma = cleanedLine.split(",")[0].trim();
+        if (node.type === "MemberExpression") {
+          if (node.object.type === "Identifier") {
+            parts.push(node.object.name);
+          }
+          if (node.property.type === "Identifier") {
+            parts.push(node.property.name);
+          }
+        }
 
-    // Remove trailing parentheses and their contents
-    const withoutParentheses = withoutComma.replace(/\(.*$/, "").trim();
+        return parts;
+      };
 
-    const parts = withoutParentheses
-      .split(".")
-      .map((part) => part.trim())
-      .filter((part) => part);
+      acornWalk.simple(this.cAST, {
+        CallExpression: (node: acorn.CallExpression) => {
+          if (node.callee.type === "MemberExpression") {
+            const parts = extractChain(node.callee);
+            if (parts[parts.length - 1] === this.functionName) {
+              functionCallParts = parts;
+            }
+          }
+        },
+      });
 
-    const lastPart = parts[parts.length - 1];
-    if (lastPart) {
-      const match = lastPart.match(/[^a-zA-Z0-9_$]+/);
-      if (match) {
-        parts[parts.length - 1] = lastPart.slice(
-          match.index! + match[0].length
-        );
-      }
+      return functionCallParts.join(".");
+    } catch (error) {
+      return null;
     }
-
-    return parts.join(".");
   }
 
   private async findFunctionLocation(filePath: string) {
     const content = await fs.promises.readFile(filePath, "utf-8");
 
     try {
-      const ast = acorn.parse(content, {
-        ecmaVersion: "latest",
-        sourceType: "module",
-        locations: true,
-      });
-
       let functionNode: acorn.Node | null = null;
 
-      acornWalk.simple(ast, {
+      const nAST = acorn.parse(content, {
+        ecmaVersion: "latest",
+        sourceType: "script",
+      });
+
+      acornWalk.simple(nAST, {
         FunctionDeclaration: (
           node: acorn.FunctionDeclaration | acorn.AnonymousFunctionDeclaration
         ) => {
@@ -167,7 +167,7 @@ export class DefinitionProviderService extends BaseProviderService {
     const directMatchedFilePaths = await Glob.glob(
       `**/${this.convertToKebabCase(nameReference)}.js`,
       {
-        cwd: this.documentPath,
+        cwd: this.workspacePath,
         absolute: true,
         ignore: "**/node_modules/**",
       }
@@ -183,7 +183,7 @@ export class DefinitionProviderService extends BaseProviderService {
     }
 
     const matchedFilePaths = await Glob.glob(`**/*-${globPathReference}.js`, {
-      cwd: this.documentPath,
+      cwd: this.workspacePath,
       absolute: true,
       ignore: "**/node_modules/**",
     });
