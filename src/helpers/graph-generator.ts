@@ -6,120 +6,123 @@ export class GraphGenerator {
   private readonly graph: DirectedChainGraph;
 
   constructor(
-    private readonly assignments: Map<string, string>,
-    private readonly expressions: string[]
+    private readonly variableAssignments: Map<string, string>,
+    private readonly methodCallExpressions: string[]
   ) {
     this.graph = new DirectedChainGraph();
   }
 
-  private extractPathFromNode(node: acorn.AnyNode): string[] {
-    const parts: string[] = [];
+  private extractDependencyPath(node: acorn.AnyNode) {
+    const pathParts: string[] = [];
 
     if (node.type === "MemberExpression") {
-      // Handle nested member expressions recursively
-      if (node.object.type === "MemberExpression") {
-        parts.push(...this.extractPathFromNode(node.object));
-      } else if (node.object.type === "Identifier") {
-        parts.push(node.object.name);
-      }
-
-      // Handle property access
-      if (node.property.type === "Identifier") {
-        parts.push(node.property.name);
-      } else if (node.property.type === "Literal") {
-        parts.push(String(node.property.value));
-      }
+      this.handleMemberExpression(node, pathParts);
     } else if (node.type === "Identifier") {
-      parts.push(node.name);
+      pathParts.push(node.name);
     }
 
-    return parts;
+    return pathParts;
   }
 
-  private parseCode(code: string): string[] {
+  private handleMemberExpression(
+    node: acorn.MemberExpression,
+    pathParts: string[]
+  ) {
+    // Handle the object part (left side of the dot)
+    if (node.object.type === "MemberExpression") {
+      pathParts.push(...this.extractDependencyPath(node.object));
+    } else if (node.object.type === "Identifier") {
+      pathParts.push(node.object.name);
+    }
+
+    // Handle the property part (right side of the dot)
+    if (node.property.type === "Identifier") {
+      pathParts.push(node.property.name);
+    } else if (node.property.type === "Literal") {
+      pathParts.push(String(node.property.value));
+    }
+  }
+
+  private parseExpressionToDependencyPath(code: string) {
     try {
       const ast = acorn.parse(code, {
         ecmaVersion: "latest",
         sourceType: "module",
       });
 
-      let parts: string[] = [];
+      let dependencyParts: string[] = [];
 
       acornWalk.simple(ast, {
         MemberExpression: (node: acorn.MemberExpression) => {
-          // Only process top-level member expressions
-          parts = this.extractPathFromNode(node);
+          dependencyParts = this.extractDependencyPath(node);
         },
         Identifier: (node: acorn.Identifier) => {
-          // Handle standalone identifiers
-          parts = [node.name];
+          if (!dependencyParts.length) {
+            dependencyParts = [node.name];
+          }
         },
       });
 
-      return parts;
+      return dependencyParts;
     } catch (error) {
-      console.warn(`Failed to parse code: ${code}`, error);
+      console.warn(`Failed to parse expression: ${code}`, error);
       return [];
     }
   }
 
-  private buildGraphFromParts(parts: string[]): void {
-    if (parts.length < 2) {
+  private createDependencyChain(pathParts: string[]) {
+    if (pathParts.length < 2) {
       return;
     }
 
-    // Add all parts as vertices
-    parts.forEach((part) => this.graph.addVertex(part));
+    // Add all parts as nodes in the graph
+    pathParts.forEach((part) => this.graph.addVertex(part));
 
-    // Connect parts in reverse order
-    for (let i = parts.length - 1; i > 0; i--) {
-      try {
-        this.graph.addEdge(parts[i], parts[i - 1]);
-      } catch (error) {
-        console.warn(
-          `Failed to add edge ${parts[i]} -> ${parts[i - 1]}:`,
-          error
-        );
-      }
+    // Connect nodes in reverse order to create the dependency chain
+    for (let i = pathParts.length - 1; i > 0; i--) {
+      this.createDependencyLink(pathParts[i], pathParts[i - 1]);
     }
   }
 
-  private processAssignment(variable: string, value: string): void {
+  private createDependencyLink(source: string, target: string) {
+    try {
+      this.graph.addEdge(source, target);
+    } catch (error) {
+      console.warn(
+        `Failed to create dependency link ${source} -> ${target}:`,
+        error
+      );
+    }
+  }
+
+  private processVariableAssignment(variable: string, value: string) {
     this.graph.addVertex(variable);
+    const parts = this.parseExpressionToDependencyPath(value);
 
-    const parts = this.parseCode(value);
     if (parts.length > 0) {
-      this.buildGraphFromParts(parts);
-      // Connect the variable to the last part of the expression
-      try {
-        this.graph.addEdge(variable, parts[parts.length - 1]);
-      } catch (error) {
-        console.warn(`Failed to connect assignment ${variable}:`, error);
-      }
+      this.createDependencyChain(parts);
+      this.createDependencyLink(variable, parts[parts.length - 1]);
     } else {
-      // Handle simple assignment
+      // Handle simple value assignment
       this.graph.addVertex(value);
-      try {
-        this.graph.addEdge(variable, value);
-      } catch (error) {
-        console.warn(`Failed to connect simple assignment ${variable}:`, error);
-      }
+      this.createDependencyLink(variable, value);
     }
   }
 
-  generateGraph(): DirectedChainGraph {
-    // Process assignments first
-    for (const [variable, value] of this.assignments) {
-      this.processAssignment(variable, value);
+  generateGraph() {
+    // Process variable assignments
+    for (const [variable, value] of this.variableAssignments) {
+      this.processVariableAssignment(variable, value);
     }
 
-    // Process expressions
-    for (const expression of this.expressions) {
-      if (!expression.trim()) {
+    // Process method calls
+    for (const methodCallExpresson of this.methodCallExpressions) {
+      if (!methodCallExpresson.trim()) {
         continue;
       }
-      const parts = this.parseCode(expression);
-      this.buildGraphFromParts(parts);
+
+      const parts = this.parseExpressionToDependencyPath(methodCallExpresson);
+      this.createDependencyChain(parts);
     }
 
     return this.graph;
