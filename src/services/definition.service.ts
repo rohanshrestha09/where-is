@@ -1,33 +1,68 @@
 import * as fs from "fs";
-import * as Glob from "glob";
-import * as fuzz from "fuzzball";
 import * as acorn from "acorn";
 import * as acornWalk from "acorn-walk";
-import { GraphGenerator } from "../helpers/graph-generator";
-import { BaseProviderService } from "./base-provider.service";
+import { FileUtil } from "../utils/file.util";
+import { GraphUtil } from "../utils/graph.util";
+import { ExtraUtil } from "../utils/extra.util";
 
-export class DefinitionProviderService extends BaseProviderService {
+export class DefinitionService {
   private readonly cAST: acorn.Program;
   private readonly documentText: string;
   private readonly workspacePath?: string;
   private readonly functionName: string;
+  private readonly lineNumber: number;
 
   constructor(props: {
     documentText: string;
     functionName: string;
     workspacePath?: string;
+    lineNumber: number;
   }) {
-    super();
     this.cAST = acorn.parse(props.documentText, {
       ecmaVersion: "latest",
       sourceType: "script",
+      locations: true,
     });
     this.documentText = props.documentText;
     this.workspacePath = props.workspacePath;
     this.functionName = props.functionName;
+    this.lineNumber = props.lineNumber;
   }
 
-  protected findAllAssignments() {
+  private findRootFunctionArgumentName() {
+    let argumentName: string | null = null;
+
+    try {
+      acornWalk.simple(this.cAST, {
+        AssignmentExpression: (node: acorn.AssignmentExpression) => {
+          if (
+            node.left.type === "MemberExpression" &&
+            node.left.object.type === "Identifier" &&
+            node.left.object.name === "internals" &&
+            node.left.property.type === "Identifier" &&
+            (node.left.property.name === "controller" ||
+              node.left.property.name === "applyRoutes")
+          ) {
+            if (
+              (node.right.type === "ArrowFunctionExpression" ||
+                node.right.type === "FunctionExpression") &&
+              node.right.params.length > 0 &&
+              node.right.params[0].type === "Identifier"
+            ) {
+              argumentName = node.right.params[0].name;
+            }
+          }
+        },
+      });
+
+      return argumentName as string | null;
+    } catch (error) {
+      console.error("Error finding root argument name:", error);
+      return null;
+    }
+  }
+
+  private findAllAssignments() {
     try {
       const assignments = new Map<string, string>();
       const relevantVariables = new Set<string>();
@@ -65,17 +100,21 @@ export class DefinitionProviderService extends BaseProviderService {
     }
   }
 
-  private findFunctionCallExpression() {
+  findFunctionCallExpression() {
     try {
       let functionCallParts: string[] = [];
+      let closestDistance = Infinity;
 
-      const extractChain = (node: acorn.MemberExpression): string[] => {
+      const extractChain = (node: acorn.AnyNode): string[] => {
         const parts: string[] = [];
 
         if (node.type === "MemberExpression") {
-          if (node.object.type === "Identifier") {
+          if (node.object.type === "MemberExpression") {
+            parts.push(...extractChain(node.object));
+          } else if (node.object.type === "Identifier") {
             parts.push(node.object.name);
           }
+
           if (node.property.type === "Identifier") {
             parts.push(node.property.name);
           }
@@ -88,8 +127,13 @@ export class DefinitionProviderService extends BaseProviderService {
         CallExpression: (node: acorn.CallExpression) => {
           if (node.callee.type === "MemberExpression") {
             const parts = extractChain(node.callee);
-            if (parts[parts.length - 1] === this.functionName) {
-              functionCallParts = parts;
+            if (parts[parts.length - 1] === this.functionName && node.loc) {
+              const distance = Math.abs(node.loc.start.line - this.lineNumber);
+              // Only consider function calls within 5 lines of the target line
+              if (distance <= 5 && distance < closestDistance) {
+                closestDistance = distance;
+                functionCallParts = parts;
+              }
             }
           }
         },
@@ -97,6 +141,7 @@ export class DefinitionProviderService extends BaseProviderService {
 
       return functionCallParts.join(".");
     } catch (error) {
+      console.error("Error finding function call expression:", error);
       return null;
     }
   }
@@ -110,6 +155,7 @@ export class DefinitionProviderService extends BaseProviderService {
       const nAST = acorn.parse(content, {
         ecmaVersion: "latest",
         sourceType: "script",
+        locations: true,
       });
 
       acornWalk.simple(nAST, {
@@ -161,118 +207,78 @@ export class DefinitionProviderService extends BaseProviderService {
   }
 
   private async findFilePathsByReference(
-    pathReference: string,
-    nameReference: string
+    nameReference: string,
+    pathReference: string
   ) {
-    const directMatchedFilePaths = await Glob.glob(
-      `**/${this.convertToKebabCase(nameReference)}.js`,
-      {
-        cwd: this.workspacePath,
-        absolute: true,
-        ignore: "**/node_modules/**",
-      }
-    );
-
-    if (directMatchedFilePaths.length) {
-      return directMatchedFilePaths;
-    }
-
-    const globPathReference = this.getGlobPathReference(pathReference);
-    if (!globPathReference) {
-      return null;
-    }
-
-    const matchedFilePaths = await Glob.glob(`**/*-${globPathReference}.js`, {
+    const directPattern = `**/${ExtraUtil.convertToKebabCase(
+      nameReference
+    )}.js`;
+    let filePaths = await FileUtil.findFilesByPattern(directPattern, {
       cwd: this.workspacePath,
-      absolute: true,
-      ignore: "**/node_modules/**",
+    });
+    if (filePaths.length) return filePaths;
+
+    const globPattern = `**/*-${ExtraUtil.getGlobPathReference(
+      pathReference
+    )}.js`;
+    const candidateFiles = await FileUtil.findFilesByPattern(globPattern, {
+      cwd: this.workspacePath,
     });
 
-    const choices = matchedFilePaths.map((filePath) =>
-      filePath.split("/").pop()
-    );
-
-    const fuzzResults = fuzz.extract(nameReference, choices, {
-      scorer: fuzz.partial_ratio,
+    return await FileUtil.findBestMatchingFiles(candidateFiles, nameReference, {
+      cutoff: 50,
     });
-
-    return fuzzResults
-      .map(([matchedName]) =>
-        matchedFilePaths.find((filePath) => filePath.includes(matchedName))
-      )
-      .filter((path): path is string => !!path);
-  }
-
-  private async findValidFilePath(nameReference: string, filePaths: string[]) {
-    const checkFile = async (filePath: string) => {
-      for await (const { content } of this.readFileReverseStream(filePath)) {
-        if (
-          content
-            .trim()
-            .match(new RegExp(`\\w+Name:?\\s*['"]${nameReference}['"]`))
-        ) {
-          return filePath;
-        }
-      }
-      return null;
-    };
-
-    const batchSize = 1;
-    for (let i = 0; i < filePaths.length; i += batchSize) {
-      const batch = filePaths.slice(i, i + batchSize);
-      try {
-        const validPath = await Promise.any(batch.map(checkFile));
-        if (validPath) {
-          return validPath;
-        }
-      } catch (e) {}
-    }
-    return null;
   }
 
   async findFunctionDefiniton() {
-    if (!this.isValidFunctionName(this.functionName)) {
-      return null;
-    }
+    if (!ExtraUtil.isValidFunctionName(this.functionName)) return null;
 
     try {
+      const rootFunctionArgumentName = this.findRootFunctionArgumentName();
+      if (!rootFunctionArgumentName) return null;
+
       const functionCallExpression = this.findFunctionCallExpression();
-      if (!functionCallExpression) {
-        return null;
-      }
+      if (!functionCallExpression) return null;
 
       const allAssignments = this.findAllAssignments();
 
-      const graphGenerator = new GraphGenerator(allAssignments, [
+      const graphUtil = new GraphUtil();
+      const graph = graphUtil.buildDirectedGraph(allAssignments, [
         functionCallExpression,
       ]);
 
-      const graph = graphGenerator.generateGraph();
+      const functionCallGraphUtil = new GraphUtil();
+      const functionCallGraph =
+        functionCallGraphUtil.buildDirectedGraphFromMethodCallExpressions([
+          functionCallExpression,
+        ]);
+      const functionCallOutgoingEdges = functionCallGraph.getOutgoingEdges(
+        this.functionName
+      );
 
-      const paths = graph.followVertexPath(this.functionName);
+      const paths = graph.findAllPathsThrough(
+        this.functionName,
+        functionCallOutgoingEdges[0],
+        rootFunctionArgumentName
+      )[0] ?? [];
+      if (!paths.length) return null;
 
       const pathReference = paths[paths.length - 3];
-      if (!pathReference) {
-        return null;
-      }
-
       const nameReference = paths[paths.length - 5];
-      if (!nameReference) {
-        return null;
-      }
+      if (!pathReference || !nameReference) return null;
 
       const filePaths = await this.findFilePathsByReference(
-        pathReference,
-        nameReference
+        nameReference,
+        pathReference
       );
-      if (!filePaths?.length) {
-        return null;
-      }
+      if (!filePaths.length) return null;
 
-      const filePath = await this.findValidFilePath(nameReference, filePaths);
-      if (!filePath) {
-        return null;
-      }
+      const filePath = await FileUtil.findFirstOccurringFile(
+        new RegExp(`\\w+Name:?\\s*['"]${nameReference}['"]`),
+        filePaths,
+        { batchSize: 30 }
+      );
+      if (!filePath) return null;
 
       return this.findFunctionLocation(filePath);
     } catch (err) {

@@ -1,26 +1,24 @@
 import * as vscode from "vscode";
-import { DefinitionProviderController } from "./controllers/definition-provider.controller";
-import { HoverProviderController } from "./controllers/hover-provider.controller";
+import { DefinitionProvider } from "./providers/definition.provider";
+import { HoverProvider } from "./providers/hover.provider";
 
 const locationStore = new Map<string, vscode.Location>();
 const hoverStore = new Map<string, vscode.Hover>();
 
 // Register the definition provider and hover provider
 export function activate(context: vscode.ExtensionContext) {
-  const definitionProviderController = new DefinitionProviderController(
-    locationStore
-  );
-  const definitionProvider = vscode.languages.registerDefinitionProvider(
+  const definitionProvider = new DefinitionProvider(locationStore);
+  const definitionDisposable = vscode.languages.registerDefinitionProvider(
     "javascript",
-    definitionProviderController
+    definitionProvider
   );
 
-  const hoverProviderController = new HoverProviderController(hoverStore);
-  const hoverProvider = vscode.languages.registerHoverProvider(
+  const hoverProvider = new HoverProvider(hoverStore);
+  const hoverDisposable = vscode.languages.registerHoverProvider(
     "javascript",
-    hoverProviderController
+    hoverProvider
   );
 
-  context.subscriptions.push(definitionProvider);
-  context.subscriptions.push(hoverProvider);
+  context.subscriptions.push(definitionDisposable);
+  context.subscriptions.push(hoverDisposable);
 }

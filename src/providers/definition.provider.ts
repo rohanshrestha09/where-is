@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
-import { DefinitionProviderService } from "../services/definition-provider.service";
+import { DefinitionService } from "../services/definition.service";
 
-export class DefinitionProviderController implements vscode.DefinitionProvider {
+export class DefinitionProvider implements vscode.DefinitionProvider {
   constructor(private readonly store: Map<string, vscode.Location>) {}
 
   async provideDefinition(
@@ -11,38 +11,39 @@ export class DefinitionProviderController implements vscode.DefinitionProvider {
     const documentText = document.getText();
     const wordRange = document.getWordRangeAtPosition(position);
     const functionName = document.getText(wordRange);
+    const lineNumber = position.line;
 
-    if (!functionName) {
-      return null;
-    }
-
-    const storeKey = `${document.fileName}:${functionName}`;
-
-    if (this.store.has(storeKey)) {
-      return this.store.get(storeKey);
-    }
+    if (!functionName) return null;
 
     const workspacePath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
 
-    const definitionProviderService = new DefinitionProviderService({
+    const definitionProviderService = new DefinitionService({
       documentText,
       workspacePath,
       functionName,
+      lineNumber,
     });
+
+    const functionCallExpression =
+      definitionProviderService.findFunctionCallExpression();
+
+    if (functionCallExpression && this.store.has(functionCallExpression)) {
+      return this.store.get(functionCallExpression);
+    }
 
     const functionDefinition =
       await definitionProviderService.findFunctionDefiniton();
 
-    if (!functionDefinition) {
-      return;
-    }
+    if (!functionDefinition) return;
 
     const location = new vscode.Location(
       vscode.Uri.file(functionDefinition.path),
       new vscode.Position(functionDefinition.line, 0)
     );
 
-    this.store.set(storeKey, location);
+    if (functionCallExpression) {
+      this.store.set(functionCallExpression, location);
+    }
 
     return location;
   }

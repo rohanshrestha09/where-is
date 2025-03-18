@@ -1,45 +1,42 @@
 import * as vscode from "vscode";
-import { DefinitionProviderService } from "../services/definition-provider.service";
+import { DefinitionService } from "../services/definition.service";
 
-export class HoverProviderController implements vscode.HoverProvider {
+export class HoverProvider implements vscode.HoverProvider {
   constructor(private readonly store: Map<string, vscode.Hover>) {}
 
   async provideHover(document: vscode.TextDocument, position: vscode.Position) {
     const documentText = document.getText();
     const wordRange = document.getWordRangeAtPosition(position);
     const functionName = document.getText(wordRange);
+    const lineNumber = position.line;
 
-    if (!functionName) {
-      return null;
-    }
-
-    const storeKey = `${document.fileName}:${functionName}`;
-
-    if (this.store.has(storeKey)) {
-      return this.store.get(storeKey);
-    }
+    if (!functionName) return null;
 
     const workspacePath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
 
     const startTime = performance.now();
 
-    const definitionProviderService = new DefinitionProviderService({
+    const definitionProviderService = new DefinitionService({
       documentText,
       workspacePath,
       functionName,
+      lineNumber,
     });
+
+    const functionCallExpression =
+      definitionProviderService.findFunctionCallExpression();
+
+    if (functionCallExpression && this.store.has(functionCallExpression)) {
+      return this.store.get(functionCallExpression);
+    }
 
     const functionDefinition =
       await definitionProviderService.findFunctionDefiniton();
-    if (!functionDefinition) {
-      return null;
-    }
+    if (!functionDefinition) return null;
 
     const timeTaken = Math.round(performance.now() - startTime);
 
-    if (!functionDefinition) {
-      return null;
-    }
+    if (!functionDefinition) return null;
 
     const hover = new vscode.Hover({
       language: "javascript",
@@ -63,7 +60,9 @@ export class HoverProviderController implements vscode.HoverProvider {
       )
     );
 
-    this.store.set(storeKey, hover);
+    if (functionCallExpression) {
+      this.store.set(functionCallExpression, hover);
+    }
 
     return hover;
   }
