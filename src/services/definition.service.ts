@@ -124,6 +124,23 @@ export class DefinitionService {
       };
 
       acornWalk.simple(this.cAST, {
+        Property: (node: acorn.Property | acorn.AssignmentProperty) => {
+          if (
+            node.key.type === "Identifier" &&
+            node.key.name === "handler" &&
+            node.value.type === "MemberExpression"
+          ) {
+            const parts = extractChain(node.value);
+            const lastPart = parts[parts.length - 1];
+            if (lastPart === this.functionName && node.loc) {
+              const distance = Math.abs(node.loc.start.line - this.lineNumber);
+              if (distance <= 5 && distance < closestDistance) {
+                closestDistance = distance;
+                functionCallParts = parts;
+              }
+            }
+          }
+        },
         CallExpression: (node: acorn.CallExpression) => {
           if (node.callee.type === "MemberExpression") {
             const parts = extractChain(node.callee);
@@ -255,11 +272,12 @@ export class DefinitionService {
         this.functionName
       );
 
-      const paths = graph.findAllPathsThrough(
-        this.functionName,
-        functionCallOutgoingEdges[0],
-        rootFunctionArgumentName
-      )[0] ?? [];
+      const paths =
+        graph.findAllPathsThrough(
+          this.functionName,
+          functionCallOutgoingEdges[0],
+          rootFunctionArgumentName
+        )[0] ?? [];
       if (!paths.length) return null;
 
       const pathReference = paths[paths.length - 3];
