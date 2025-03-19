@@ -18,20 +18,28 @@
     "configuration": {
       "title": "Where is?",
       "properties": {
-        "whereIs.previewMode": {
-          "type": "string",
-          "enum": [
-            "off",
-            "definitionPreview",
-            "fullPreview"
-          ],
-          "markdownEnumDescriptions": [
-            "Disable Preview",
-            "Only show definition preview",
-            "Show full preview"
-          ],
-          "default": "fullPreview",
-          "description": "Choose the preview mode"
+        "whereIs.enableHover": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable hover information for function calls"
+        },
+        "whereIs.enableDefinition": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable go to definition functionality"
+        },
+        "whereIs.enableDiagnostic": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable diagnostic warnings for naming conventions"
+        },
+        "whereIs.enabledProjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["base-project"],
+          "description": "List of project names (from package.json) where the extension should be enabled"
         }
       }
     }

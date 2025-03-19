@@ -3,13 +3,7 @@ import * as acornWalk from "acorn-walk";
 import { DirectedGraph } from "../datastructures/graph";
 
 export class GraphUtil {
-  private readonly graph: DirectedGraph;
-  private readonly blacklistedVertices: string[];
-
-  constructor() {
-    this.graph = new DirectedGraph();
-    this.blacklistedVertices = ["core-models"];
-  }
+  private readonly graph: DirectedGraph = new DirectedGraph();
 
   private extractNodePath(node: acorn.AnyNode) {
     const pathParts: string[] = [];
@@ -59,7 +53,6 @@ export class GraphUtil {
 
       return nodeParts;
     } catch (error) {
-      console.warn(`Failed to parse expression: ${code}`, error);
       return [];
     }
   }
@@ -67,55 +60,37 @@ export class GraphUtil {
   private buildNodeChain(pathParts: string[]) {
     if (pathParts.length < 2) return;
 
+    // Add all parts as nodes in the graph
     pathParts.forEach((part) => {
-      if (!this.blacklistedVertices.includes(part)) {
-        this.graph.addVertex(part);
-      }
+      this.graph.addVertex(part);
     });
 
+    // Connect nodes in reverse order
     for (let i = pathParts.length - 1; i > 0; i--) {
       const source = pathParts[i];
       const target = pathParts[i - 1];
-
-      if (
-        !this.blacklistedVertices.includes(source) &&
-        !this.blacklistedVertices.includes(target)
-      ) {
-        this.addDirectedEdge(source, target);
-      }
+      this.addDirectedEdge(source, target);
     }
   }
 
   private addDirectedEdge(source: string, target: string) {
     try {
-      if (
-        !this.blacklistedVertices.includes(source) &&
-        !this.blacklistedVertices.includes(target)
-      ) {
-        this.graph.addEdge(source, target);
-      }
+      this.graph.addEdge(source, target);
     } catch (error) {
-      console.warn(`Failed to create link ${source} -> ${target}:`, error);
     }
   }
 
   private processNodeAssignment(variable: string, value: string) {
-    if (this.blacklistedVertices.includes(variable)) return;
-
     this.graph.addVertex(variable);
     const parts = this.parseExpressionToNodePath(value);
 
     if (parts.length > 0) {
       this.buildNodeChain(parts);
       const lastPart = parts[parts.length - 1];
-      if (!this.blacklistedVertices.includes(lastPart)) {
-        this.addDirectedEdge(variable, lastPart);
-      }
+      this.addDirectedEdge(variable, lastPart);
     } else {
-      if (!this.blacklistedVertices.includes(value)) {
-        this.graph.addVertex(value);
-        this.addDirectedEdge(variable, value);
-      }
+      this.graph.addVertex(value);
+      this.addDirectedEdge(variable, value);
     }
   }
 

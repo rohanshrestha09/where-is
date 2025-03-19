@@ -57,7 +57,6 @@ export class DefinitionService {
 
       return argumentName as string | null;
     } catch (error) {
-      console.error("Error finding root argument name:", error);
       return null;
     }
   }
@@ -95,7 +94,6 @@ export class DefinitionService {
 
       return assignments;
     } catch (error) {
-      console.error("Error parsing assignments:", error);
       return new Map<string, string>();
     }
   }
@@ -117,6 +115,8 @@ export class DefinitionService {
 
           if (node.property.type === "Identifier") {
             parts.push(node.property.name);
+          } else if (node.property.type === "Literal") {
+            parts.push(String(node.property.value));
           }
         }
 
@@ -127,9 +127,9 @@ export class DefinitionService {
         CallExpression: (node: acorn.CallExpression) => {
           if (node.callee.type === "MemberExpression") {
             const parts = extractChain(node.callee);
-            if (parts[parts.length - 1] === this.functionName && node.loc) {
+            const lastPart = parts[parts.length - 1];
+            if (lastPart === this.functionName && node.loc) {
               const distance = Math.abs(node.loc.start.line - this.lineNumber);
-              // Only consider function calls within 5 lines of the target line
               if (distance <= 5 && distance < closestDistance) {
                 closestDistance = distance;
                 functionCallParts = parts;
@@ -141,7 +141,6 @@ export class DefinitionService {
 
       return functionCallParts.join(".");
     } catch (error) {
-      console.error("Error finding function call expression:", error);
       return null;
     }
   }
@@ -200,7 +199,7 @@ export class DefinitionService {
         return { content, path, line, text, loc };
       }
     } catch (error) {
-      console.error("Error parsing function location:", error);
+      return null;
     }
 
     return null;
@@ -274,7 +273,7 @@ export class DefinitionService {
       if (!filePaths.length) return null;
 
       const filePath = await FileUtil.findFirstOccurringFile(
-        new RegExp(`\\w+Name:?\\s*['"]${nameReference}['"]`),
+        new RegExp(`\\w+Name:?\\s*(?:['"\`])${nameReference}(?:['"\`])`),
         filePaths,
         { batchSize: 30 }
       );
@@ -282,9 +281,7 @@ export class DefinitionService {
 
       return this.findFunctionLocation(filePath);
     } catch (err) {
-      console.error(`Error locating function definition:`, err);
+      return null;
     }
-
-    return null;
   }
 }

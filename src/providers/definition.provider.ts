@@ -38,7 +38,7 @@ export class DefinitionProvider implements vscode.DefinitionProvider {
 
     const location = new vscode.Location(
       vscode.Uri.file(functionDefinition.path),
-      new vscode.Position(functionDefinition.line, 0)
+      new vscode.Position(functionDefinition.line - 1, 0)
     );
 
     if (functionCallExpression) {

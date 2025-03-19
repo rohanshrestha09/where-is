@@ -19,6 +19,12 @@ export class ExtraUtil {
       .toLowerCase();
   }
 
+  static convertToPascalCase(str: string) {
+    return str
+      .replace(/(^|-)(\w)/g, (match, p1, p2) => p2.toUpperCase())
+      .replace(/[^a-zA-Z0-9]/g, "");
+  }
+
   static isValidFunctionName(functionName: string) {
     return (
       functionName.length < MAX_FUNCTION_LENGTH && !this.isKeyword(functionName)
