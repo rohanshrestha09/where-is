@@ -72,4 +72,4 @@ npm run package
 
 ## License
 
-[MIT License](LICENSE)
+[MIT License](https://github.com/rohanshrestha09/where-is/blob/development/LICENSE)
