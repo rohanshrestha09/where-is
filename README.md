@@ -20,7 +20,7 @@ A VS Code extension that helps you quickly find function definitions in JavaScri
 This extension contributes the following settings:
 
 * `whereIs.enabledProjects`: List of project names where the extension should be enabled
-  * Default: `["portpro-backend"]`
+  * Default: `["base-project"]`
 * `whereIs.enableHover`: Enable or disable hover information for function calls
   * Default: `true`
 * `whereIs.enableDefinition`: Enable or disable go to definition functionality
