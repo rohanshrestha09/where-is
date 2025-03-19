@@ -2,7 +2,7 @@
   "name": "where-is",
   "displayName": "where-is",
   "description": "",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "rohanshresthaportpro",
   "repository": {
     "type": "git",
@@ -43,7 +43,9 @@
           "items": {
             "type": "string"
           },
-          "default": ["base-project"],
+          "default": [
+            "base-project"
+          ],
           "description": "List of project names (from package.json) where the extension should be enabled"
         }
       }
