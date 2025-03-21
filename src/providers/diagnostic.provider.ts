@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import { DiagnosticService } from "../services/diagnostic.service";
 import * as path from "path";
+import { DiagnosticService } from "../services/diagnostic.service";
 
-export class DiagnosticProvider {
+export class DiagnosticProvider implements vscode.Disposable {
   private diagnosticCollection =
     vscode.languages.createDiagnosticCollection("where-is-linter");
   private disposables: vscode.Disposable[] = [];
@@ -44,9 +44,9 @@ export class DiagnosticProvider {
     const diagnosticService = new DiagnosticService(text, fileName);
 
     const warnings = diagnosticService.analyzeWarnings();
-    warnings.forEach(({ message, startPos, endPos }) => {
-      const startPosition = document.positionAt(startPos);
-      const endPosition = document.positionAt(endPos);
+    warnings.forEach(({ message, start, end }) => {
+      const startPosition = document.positionAt(start);
+      const endPosition = document.positionAt(end);
 
       const diagnostic = new vscode.Diagnostic(
         new vscode.Range(startPosition, endPosition),

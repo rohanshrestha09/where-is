@@ -41,6 +41,8 @@ export class ExtraUtil {
         return "controller";
       case "core-config":
         return "config";
+      case "core-models":
+        return "model";
     }
 
     return null;

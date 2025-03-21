@@ -4,6 +4,10 @@ import * as fuzz from "fuzzball";
 import { createInterface } from "readline";
 
 export class FileUtil {
+  static async readFile(filePath: string) {
+    return await fs.promises.readFile(filePath, "utf8");
+  }
+
   static async *readFileForwardStreamByLine(
     filePath: string,
     chunkSize = 1024
@@ -138,8 +142,8 @@ export class FileUtil {
     });
 
     return fuzzResults
-      .map(([matchedName]) =>
-        filePaths.find((filePath) => filePath.includes(matchedName))
+      .flatMap(([matchedName]) =>
+        filePaths.filter((filePath) => filePath.includes(matchedName))
       )
       .filter((path): path is string => !!path);
   }

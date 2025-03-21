@@ -1,4 +1,3 @@
-import * as fs from "fs";
 import * as acorn from "acorn";
 import * as acornWalk from "acorn-walk";
 import { FileUtil } from "../utils/file.util";
@@ -124,6 +123,17 @@ export class DefinitionService {
       };
 
       acornWalk.simple(this.cAST, {
+        MemberExpression: (node: acorn.MemberExpression) => {
+          const parts = extractChain(node);
+          const lastPart = parts[parts.length - 1];
+          if (lastPart === this.functionName && node.loc) {
+            const distance = Math.abs(node.loc.start.line - this.lineNumber);
+            if (distance <= 5 && distance < closestDistance) {
+              closestDistance = distance;
+              functionCallParts = parts;
+            }
+          }
+        },
         Property: (node: acorn.Property | acorn.AssignmentProperty) => {
           if (
             node.key.type === "Identifier" &&
@@ -163,7 +173,7 @@ export class DefinitionService {
   }
 
   private async findFunctionLocation(filePath: string) {
-    const content = await fs.promises.readFile(filePath, "utf-8");
+    const content = await FileUtil.readFile(filePath);
 
     try {
       let functionNode: acorn.Node | null = null;

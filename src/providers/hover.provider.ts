@@ -16,7 +16,7 @@ export class HoverProvider implements vscode.HoverProvider {
 
     const startTime = performance.now();
 
-    const definitionProviderService = new DefinitionService({
+    const definitionService = new DefinitionService({
       documentText,
       workspacePath,
       functionName,
@@ -24,14 +24,13 @@ export class HoverProvider implements vscode.HoverProvider {
     });
 
     const functionCallExpression =
-      definitionProviderService.findFunctionCallExpression();
+      definitionService.findFunctionCallExpression();
 
     if (functionCallExpression && this.store.has(functionCallExpression)) {
       return this.store.get(functionCallExpression);
     }
 
-    const functionDefinition =
-      await definitionProviderService.findFunctionDefiniton();
+    const functionDefinition = await definitionService.findFunctionDefiniton();
     if (!functionDefinition) return null;
 
     const timeTaken = Math.round(performance.now() - startTime);

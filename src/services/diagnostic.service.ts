@@ -16,8 +16,8 @@ export class DiagnosticService {
   analyzeWarnings() {
     const warnings: {
       message: string;
-      startPos: number;
-      endPos: number;
+      start: number;
+      end: number;
     }[] = [];
 
     acornWalk.simple(this.cAST, {
@@ -65,8 +65,8 @@ export class DiagnosticService {
             ) {
               warnings.push({
                 message: `Recommended ${propertyName} as "${expectedName}"`,
-                startPos: returnStatement?.start || node.right.start,
-                endPos: returnStatement?.end || node.right.end,
+                start: returnStatement?.start || node.right.start,
+                end: returnStatement?.end || node.right.end,
               });
             }
           }

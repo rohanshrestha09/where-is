@@ -2,7 +2,7 @@
   "name": "where-is",
   "displayName": "Where is?",
   "description": "",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "rohanshresthaportpro",
   "repository": {
     "type": "git",
@@ -10,7 +10,8 @@
   },
   "engines": {
     "vscode": ">=1.96.2",
-    "cursor": ">=0.47.8"
+    "cursor": ">=0.47.8",
+    "windsurf": ">=1.94.0"
   },
   "categories": [
     "Other"

@@ -17,7 +17,7 @@ export class DefinitionProvider implements vscode.DefinitionProvider {
 
     const workspacePath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
 
-    const definitionProviderService = new DefinitionService({
+    const definitionService = new DefinitionService({
       documentText,
       workspacePath,
       functionName,
@@ -25,14 +25,13 @@ export class DefinitionProvider implements vscode.DefinitionProvider {
     });
 
     const functionCallExpression =
-      definitionProviderService.findFunctionCallExpression();
+      definitionService.findFunctionCallExpression();
 
     if (functionCallExpression && this.store.has(functionCallExpression)) {
       return this.store.get(functionCallExpression);
     }
 
-    const functionDefinition =
-      await definitionProviderService.findFunctionDefiniton();
+    const functionDefinition = await definitionService.findFunctionDefiniton();
 
     if (!functionDefinition) return;
 
