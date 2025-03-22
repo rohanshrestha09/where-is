@@ -1,5 +1,7 @@
 import * as acorn from "acorn";
+import * as acornWalk from "acorn-walk";
 import { BaseRegistry } from "./base.registry";
+import { RegistryNode, RegistryTree } from "../datastructures/registry-tree";
 
 export class ModelRegistry extends BaseRegistry {
   constructor(workspacePath: string) {
@@ -10,32 +12,55 @@ export class ModelRegistry extends BaseRegistry {
     return this.findModelParameters(ast);
   }
 
-  findRegistryNodeMap(path: string, ast: acorn.Node) {
+  findRegistryTree(path: string, ast: acorn.Node) {
     const node = this.findModelReturnStatement(ast);
-    if (!node?.argument || node.argument.type !== "CallExpression") return null;
+    if (!node?.argument) return null;
 
-    const callExpr = node.argument;
+    let modelCallExpr: acorn.CallExpression | null = null;
+
+    if (node.argument.type === "CallExpression") {
+      modelCallExpr = node.argument;
+    } else if (node.argument.type === "Identifier") {
+      const variableName = node.argument.name;
+      let foundCall: acorn.CallExpression | null = null;
+      acornWalk.simple(ast, {
+        VariableDeclarator: (declNode: acorn.VariableDeclarator) => {
+          if (
+            declNode.id.type === "Identifier" &&
+            declNode.id.name === variableName &&
+            declNode.init?.type === "CallExpression"
+          ) {
+            foundCall = declNode.init;
+          }
+        },
+      });
+      modelCallExpr = foundCall;
+    }
+
     if (
-      callExpr.callee.type !== "MemberExpression" ||
-      callExpr.callee.object.type !== "Identifier" ||
-      callExpr.callee.object.name !== "mongoose" ||
-      callExpr.callee.property.type !== "Identifier" ||
-      callExpr.callee.property.name !== "model" ||
-      !callExpr.arguments[0] ||
-      callExpr.arguments[0].type !== "Literal"
+      !modelCallExpr ||
+      modelCallExpr.callee.type !== "MemberExpression" ||
+      modelCallExpr.callee.object.type !== "Identifier" ||
+      modelCallExpr.callee.property.type !== "Identifier" ||
+      (modelCallExpr.callee.property.name !== "model" &&
+        modelCallExpr.callee.property.name !== "define") ||
+      !modelCallExpr.arguments[0] ||
+      modelCallExpr.arguments[0].type !== "Literal"
     )
       return null;
 
-    const modelName = String(callExpr.arguments[0].value);
+    const modelName = String(modelCallExpr.arguments[0].value);
+    const tree = new RegistryTree();
 
-    return {
-      [modelName]: {
-        path,
-        name: modelName,
-        start: node.start,
-        end: node.end,
-        loc: node.loc,
-      },
+    const registryNode: RegistryNode = {
+      path,
+      name: modelName,
+      start: node.start,
+      end: node.end,
+      loc: node.loc,
     };
+
+    tree.addNode([...this.basePath, modelName], registryNode);
+    return tree;
   }
 }

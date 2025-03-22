@@ -4,7 +4,7 @@ import { DiagnosticService } from "../services/diagnostic.service";
 
 export class DiagnosticProvider implements vscode.Disposable {
   private diagnosticCollection =
-    vscode.languages.createDiagnosticCollection("where-is-linter");
+    vscode.languages.createDiagnosticCollection("where-is.linter");
   private disposables: vscode.Disposable[] = [];
 
   constructor(private readonly options: { language: string }) {

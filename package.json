@@ -51,7 +51,13 @@
           "description": "List of project names (from package.json) where the extension should be enabled"
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "where-is.refreshRegistry",
+        "title": "Where Is: Refresh Registry"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

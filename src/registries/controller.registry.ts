@@ -1,5 +1,6 @@
 import * as acorn from "acorn";
 import { BaseRegistry } from "./base.registry";
+import { RegistryNode, RegistryTree } from "../datastructures/registry-tree";
 
 export class ControllerRegistry extends BaseRegistry {
   constructor(workspacePath: string) {
@@ -10,34 +11,33 @@ export class ControllerRegistry extends BaseRegistry {
     return this.findControllerParameters(ast);
   }
 
-  findRegistryNodeMap(path: string, ast: acorn.Node) {
+  findRegistryTree(path: string, ast: acorn.Node) {
     const registryNodeMap = this.findControllerReturnNodeMap(ast);
 
     const controllerNameNode = registryNodeMap["controllerName"];
-
     const controllerName =
       controllerNameNode.type === "Literal"
         ? String(controllerNameNode.value)
         : null;
     if (!controllerName) return null;
 
-    const registryNode: Record<any, any> = {
-      [controllerName]: {},
-    };
+    const tree = new RegistryTree();
 
     for (const name in registryNodeMap) {
       if (name === "controllerName") continue;
 
       const currentNode = registryNodeMap[name];
-      registryNode[controllerName][name] = {
+      const node: RegistryNode = {
         path,
         name,
         start: currentNode.start,
         end: currentNode.end,
         loc: currentNode.loc,
       };
+
+      tree.addNode([...this.basePath, controllerName, name], node);
     }
 
-    return registryNode;
+    return tree;
   }
 }

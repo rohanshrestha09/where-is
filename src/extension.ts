@@ -5,6 +5,7 @@ import { Configs } from "./configs";
 import { DefinitionProvider } from "./providers/definition.provider";
 import { HoverProvider } from "./providers/hover.provider";
 import { DiagnosticProvider } from "./providers/diagnostic.provider";
+import { RegistryProvider } from "./providers/registry.provider";
 
 const locationStore = new Map<string, vscode.Location>();
 const hoverStore = new Map<string, vscode.Hover>();
@@ -31,8 +32,12 @@ export async function activate(context: vscode.ExtensionContext) {
   const configs = new Configs("whereIs");
 
   const enabledProjects = configs.get("enabledProjects", []);
+
   const isEnabled = await isProjectEnabled(enabledProjects);
   if (!isEnabled) return;
+
+  const registryProvider = new RegistryProvider(context.globalState);
+  context.subscriptions.push(registryProvider);
 
   configs.when("enableDiagnostic", true, () => {
     const diagnosticProvider = new DiagnosticProvider({

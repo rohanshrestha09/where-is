@@ -1,5 +1,6 @@
 import * as acorn from "acorn";
 import { BaseRegistry } from "./base.registry";
+import { RegistryNode, RegistryTree } from "../datastructures/registry-tree";
 
 export class UtilityFunctionRegistry extends BaseRegistry {
   constructor(workspacePath: string) {
@@ -10,34 +11,31 @@ export class UtilityFunctionRegistry extends BaseRegistry {
     return this.findControllerParameters(ast);
   }
 
-  findRegistryNodeMap(path: string, ast: acorn.Node) {
+  findRegistryTree(path: string, ast: acorn.Node) {
     const registryNodeMap = this.findControllerReturnNodeMap(ast);
 
-    const utilityFunctionNode = registryNodeMap["UtilityName"];
+    const utilityNode = registryNodeMap["UtilityName"];
+    const utilityName =
+      utilityNode.type === "Literal" ? String(utilityNode.value) : null;
+    if (!utilityName) return null;
 
-    const utilityFunctionName =
-      utilityFunctionNode.type === "Literal"
-        ? String(utilityFunctionNode.value)
-        : null;
-    if (!utilityFunctionName) return null;
-
-    const registryNode: Record<any, any> = {
-      [utilityFunctionName]: {},
-    };
+    const tree = new RegistryTree();
 
     for (const name in registryNodeMap) {
       if (name === "UtilityName") continue;
 
       const currentNode = registryNodeMap[name];
-      registryNode[utilityFunctionName][name] = {
+      const node: RegistryNode = {
         path,
         name,
         start: currentNode.start,
         end: currentNode.end,
         loc: currentNode.loc,
       };
+
+      tree.addNode([...this.basePath, utilityName, name], node);
     }
 
-    return registryNode;
+    return tree;
   }
 }

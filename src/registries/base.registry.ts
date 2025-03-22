@@ -2,12 +2,17 @@ import * as acorn from "acorn";
 import * as acornWalk from "acorn-walk";
 import { ExtraUtil } from "../utils/extra.util";
 import { FileUtil } from "../utils/file.util";
+import { RegistryTree } from "../datastructures/registry-tree";
 
 export abstract class BaseRegistry {
   constructor(
     private readonly workspacePath: string,
     private readonly pluginName: string
   ) {}
+
+  protected get basePath() {
+    return ["server", "plugins", this.pluginName];
+  }
 
   private isControllerAssignment(node: acorn.AssignmentExpression) {
     return (
@@ -236,17 +241,15 @@ export abstract class BaseRegistry {
     }
   }
 
-  abstract findRegistryNodeMap(
+  protected abstract findRegistryTree(
     path: string,
     ast: acorn.Node
-  ): Record<any, any> | null;
+  ): RegistryTree | null;
 
-  abstract findRegistryParameters(ast: acorn.Node): string[];
+  protected abstract findRegistryParameters(ast: acorn.Node): string[];
 
-  async generateRegistry() {
-    const newRegistryNodeMap: Record<any, any> = {
-      [this.pluginName]: {},
-    };
+  async generateRegistryTree() {
+    const mainTree = new RegistryTree();
 
     const pattern = `**/*-${ExtraUtil.getGlobPathReference(
       this.pluginName
@@ -268,15 +271,12 @@ export abstract class BaseRegistry {
       const registryParameters = this.findRegistryParameters(ast);
       if (!registryParameters.length) continue;
 
-      const registryNodeMap = this.findRegistryNodeMap(path, ast);
-      if (!registryNodeMap) continue;
+      const subTree = this.findRegistryTree(path, ast);
+      if (!subTree) continue;
 
-      newRegistryNodeMap[this.pluginName] = {
-        ...newRegistryNodeMap[this.pluginName],
-        ...registryNodeMap,
-      };
+      mainTree.merge(subTree);
     }
 
-    return newRegistryNodeMap;
+    return mainTree;
   }
 }
