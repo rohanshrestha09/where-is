@@ -1,8 +1,13 @@
 import * as vscode from "vscode";
 import { DefinitionService } from "../services/definition.service";
+import { RegistryTree } from "../datastructures/registry-tree";
+import { Configs } from "../configs";
 
 export class DefinitionProvider implements vscode.DefinitionProvider {
-  constructor(private readonly store: Map<string, vscode.Location>) {}
+  constructor(
+    private readonly memento: vscode.Memento,
+    private readonly store: Map<string, vscode.Location>
+  ) {}
 
   async provideDefinition(
     document: vscode.TextDocument,
@@ -15,14 +20,19 @@ export class DefinitionProvider implements vscode.DefinitionProvider {
 
     if (!functionName) return null;
 
-    const workspacePath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+    const registryTreeJson = this.memento.get<RegistryTree>(
+      Configs.REGISTRY_TREE_CACHE_KEY
+    );
+    if (!registryTreeJson) return;
 
-    const definitionService = new DefinitionService({
-      documentText,
-      workspacePath,
-      functionName,
-      lineNumber,
-    });
+    const definitionService = new DefinitionService(
+      RegistryTree.fromJSON(registryTreeJson),
+      {
+        documentText,
+        functionName,
+        lineNumber,
+      }
+    );
 
     const functionCallExpression =
       definitionService.findFunctionCallExpression();
@@ -37,7 +47,7 @@ export class DefinitionProvider implements vscode.DefinitionProvider {
 
     const location = new vscode.Location(
       vscode.Uri.file(functionDefinition.path),
-      new vscode.Position(functionDefinition.line - 1, 0)
+      new vscode.Position(functionDefinition.loc!.start.line - 1, 0)
     );
 
     if (functionCallExpression) {

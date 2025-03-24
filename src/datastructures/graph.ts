@@ -2,41 +2,42 @@
  * Represents a directed graph data structure where vertices are connected by directed edges.
  * Each vertex can have multiple outgoing and incoming edges.
  */
-export class DirectedGraph {
-  private vertices: Map<string, Set<string>>;
+export class DirectedGraph<T = any> {
+  private vertices: Map<string, { data?: T; edges: Set<string> }>;
   private incomingEdges: Map<string, Set<string>>;
 
-  /**
-   * Initializes a new instance of the DirectedGraph class.
-   * Creates empty maps for storing vertices and their edges.
-   */
   constructor() {
     this.vertices = new Map();
     this.incomingEdges = new Map();
   }
 
-  /**
-   * Adds a new vertex to the graph if it doesn't already exist.
-   * @param vertex - The unique identifier for the vertex to add
-   */
   addVertex(vertex: string): void {
     if (!this.vertices.has(vertex)) {
-      this.vertices.set(vertex, new Set());
+      this.vertices.set(vertex, { edges: new Set() });
       this.incomingEdges.set(vertex, new Set());
     }
   }
 
-  /**
-   * Creates a directed edge from the source vertex to the target vertex.
-   * If either vertex doesn't exist, they will be created automatically.
-   * @param source - The vertex where the edge starts
-   * @param target - The vertex where the edge ends
-   */
-  addEdge(source: string, target: string): void {
-    this.addVertex(source);
-    this.addVertex(target);
+  getVertexData(vertex: string): T | undefined {
+    return this.vertices.get(vertex)?.data;
+  }
 
-    this.vertices.get(source)!.add(target);
+  setVertexData(vertex: string, data: T): void {
+    if (this.vertices.has(vertex)) {
+      const vertexInfo = this.vertices.get(vertex)!;
+      vertexInfo.data = data;
+    }
+  }
+
+  addEdge(source: string, target: string): void {
+    if (!this.vertices.has(source)) {
+      this.addVertex(source);
+    }
+    if (!this.vertices.has(target)) {
+      this.addVertex(target);
+    }
+
+    this.vertices.get(source)!.edges.add(target);
     this.incomingEdges.get(target)!.add(source);
   }
 
@@ -49,7 +50,7 @@ export class DirectedGraph {
     if (!this.vertices.has(vertex)) return;
 
     // Remove all outgoing edges
-    const outgoing = this.vertices.get(vertex)!;
+    const { edges: outgoing } = this.vertices.get(vertex)!;
     for (const target of outgoing) {
       this.incomingEdges.get(target)!.delete(vertex);
     }
@@ -57,7 +58,7 @@ export class DirectedGraph {
     // Remove all incoming edges
     const incoming = this.incomingEdges.get(vertex)!;
     for (const source of incoming) {
-      this.vertices.get(source)!.delete(vertex);
+      this.vertices.get(source)!.edges.delete(vertex);
     }
 
     // Remove the vertex itself
@@ -74,7 +75,7 @@ export class DirectedGraph {
   removeEdge(source: string, target: string): void {
     if (!this.vertices.has(source) || !this.vertices.has(target)) return;
 
-    this.vertices.get(source)!.delete(target);
+    this.vertices.get(source)!.edges.delete(target);
     this.incomingEdges.get(target)!.delete(source);
   }
 
@@ -84,7 +85,7 @@ export class DirectedGraph {
    * @returns An array of vertex identifiers that are destinations of edges from the specified vertex
    */
   getOutgoingEdges(vertex: string): string[] {
-    return Array.from(this.vertices.get(vertex) || new Set());
+    return Array.from(this.vertices.get(vertex)?.edges || new Set());
   }
 
   /**
@@ -204,8 +205,9 @@ export class DirectedGraph {
   clone(): DirectedGraph {
     const newGraph = new DirectedGraph();
 
-    for (const [vertex, edges] of this.vertices) {
+    for (const [vertex, { data, edges }] of this.vertices) {
       newGraph.addVertex(vertex);
+      newGraph.setVertexData(vertex, data);
       for (const edge of edges) {
         newGraph.addEdge(vertex, edge);
       }
@@ -251,6 +253,46 @@ export class DirectedGraph {
 
     visited.add(source);
     dfs(source, [source]);
+    return paths;
+  }
+
+  /**
+   * Finds all possible paths from the source vertex to the target vertex through a specific vertex.
+   * Uses depth-first search (DFS) with backtracking.
+   * @param source - The starting vertex
+   * @param through - The vertex that must be in the path
+   * @param target - The destination vertex
+   * @returns An array of arrays, where each inner array represents a path from source through the specified vertex to target along with the data of each vertex.
+   */
+  findAllPathsThroughWithData(
+    source: string,
+    through: string,
+    target: string
+  ): [string, T | undefined][][] {
+    const paths: [string, T | undefined][][] = [];
+    const visited = new Set<string>();
+
+    const dfs = (current: string, path: [string, T | undefined][]) => {
+      if (current === target) {
+        if (path.some(([vertex]) => vertex === through)) {
+          paths.push([...path]);
+        }
+        return;
+      }
+
+      for (const nextVertex of this.getOutgoingEdges(current)) {
+        if (!visited.has(nextVertex)) {
+          visited.add(nextVertex);
+          path.push([nextVertex, this.getVertexData(nextVertex)]);
+          dfs(nextVertex, path);
+          path.pop();
+          visited.delete(nextVertex);
+        }
+      }
+    };
+
+    visited.add(source);
+    dfs(source, [[source, this.getVertexData(source)]]);
     return paths;
   }
 }

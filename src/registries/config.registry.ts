@@ -32,7 +32,7 @@ export class ConfigRegistry extends BaseRegistry {
         name,
         start: currentNode.start,
         end: currentNode.end,
-        loc: currentNode.loc,
+        loc: currentNode.loc!,
       };
 
       tree.addNode([...this.basePath, configurationName, name], node);

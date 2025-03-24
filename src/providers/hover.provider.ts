@@ -1,8 +1,13 @@
 import * as vscode from "vscode";
 import { DefinitionService } from "../services/definition.service";
+import { RegistryTree } from "../datastructures/registry-tree";
+import { Configs } from "../configs";
 
 export class HoverProvider implements vscode.HoverProvider {
-  constructor(private readonly store: Map<string, vscode.Hover>) {}
+  constructor(
+    private readonly memento: vscode.Memento,
+    private readonly store: Map<string, vscode.Hover>
+  ) {}
 
   async provideHover(document: vscode.TextDocument, position: vscode.Position) {
     const documentText = document.getText();
@@ -12,16 +17,21 @@ export class HoverProvider implements vscode.HoverProvider {
 
     if (!functionName) return null;
 
-    const workspacePath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+    const registryTreeJson = this.memento.get<RegistryTree>(
+      Configs.REGISTRY_TREE_CACHE_KEY
+    );
+    if (!registryTreeJson) return null;
 
     const startTime = performance.now();
 
-    const definitionService = new DefinitionService({
-      documentText,
-      workspacePath,
-      functionName,
-      lineNumber,
-    });
+    const definitionService = new DefinitionService(
+      RegistryTree.fromJSON(registryTreeJson),
+      {
+        documentText,
+        functionName,
+        lineNumber,
+      }
+    );
 
     const functionCallExpression =
       definitionService.findFunctionCallExpression();
@@ -35,8 +45,6 @@ export class HoverProvider implements vscode.HoverProvider {
 
     const timeTaken = Math.round(performance.now() - startTime);
 
-    if (!functionDefinition) return null;
-
     const hover = new vscode.Hover({
       language: "javascript",
       value: functionDefinition.text,
@@ -44,9 +52,9 @@ export class HoverProvider implements vscode.HoverProvider {
 
     const sourceMarkdown = new vscode.MarkdownString(
       `[\`${functionDefinition.path}:${
-        functionDefinition.line
+        functionDefinition.loc.start.line
       }\`](${vscode.Uri.file(functionDefinition.path)}#L${
-        functionDefinition.line
+        functionDefinition.loc.start.line
       }) $(go-to-file)`
     );
     sourceMarkdown.supportThemeIcons = true;
@@ -55,7 +63,11 @@ export class HoverProvider implements vscode.HoverProvider {
 
     hover.contents.unshift(
       new vscode.MarkdownString(
-        `\`\`\`\nTime taken: ${timeTaken}ms, Line of Code: ${functionDefinition.loc}\n\`\`\``
+        `\`\`\`\nTime taken: ${timeTaken}ms, Line of Code: ${
+          functionDefinition.loc.end.line -
+          functionDefinition.loc.start.line +
+          1
+        }\n\`\`\``
       )
     );
 

@@ -1,5 +1,4 @@
 import * as acorn from "acorn";
-import * as acornWalk from "acorn-walk";
 import { BaseRegistry } from "./base.registry";
 import { RegistryNode, RegistryTree } from "../datastructures/registry-tree";
 
@@ -13,29 +12,8 @@ export class ModelRegistry extends BaseRegistry {
   }
 
   findRegistryTree(path: string, ast: acorn.Node) {
-    const node = this.findModelReturnStatement(ast);
-    if (!node?.argument) return null;
-
-    let modelCallExpr: acorn.CallExpression | null = null;
-
-    if (node.argument.type === "CallExpression") {
-      modelCallExpr = node.argument;
-    } else if (node.argument.type === "Identifier") {
-      const variableName = node.argument.name;
-      let foundCall: acorn.CallExpression | null = null;
-      acornWalk.simple(ast, {
-        VariableDeclarator: (declNode: acorn.VariableDeclarator) => {
-          if (
-            declNode.id.type === "Identifier" &&
-            declNode.id.name === variableName &&
-            declNode.init?.type === "CallExpression"
-          ) {
-            foundCall = declNode.init;
-          }
-        },
-      });
-      modelCallExpr = foundCall;
-    }
+    const modelCallExpr = this.findModelCallExpression(ast);
+    if (!modelCallExpr) return null;
 
     if (
       !modelCallExpr ||
@@ -55,9 +33,9 @@ export class ModelRegistry extends BaseRegistry {
     const registryNode: RegistryNode = {
       path,
       name: modelName,
-      start: node.start,
-      end: node.end,
-      loc: node.loc,
+      start: modelCallExpr.start,
+      end: modelCallExpr.end,
+      loc: modelCallExpr.loc!,
     };
 
     tree.addNode([...this.basePath, modelName], registryNode);

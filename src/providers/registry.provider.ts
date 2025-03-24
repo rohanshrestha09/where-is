@@ -1,9 +1,8 @@
 import * as vscode from "vscode";
 import { RegistryService } from "../services/registry.service";
+import { Configs } from "../configs";
 
 export class RegistryProvider implements vscode.Disposable {
-  private static readonly CACHE_KEY = "where-is.registryTree";
-
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(private readonly memento: vscode.Memento) {
@@ -57,11 +56,14 @@ export class RegistryProvider implements vscode.Disposable {
     const registryService = new RegistryService(workspacePath);
     const registryTree = await registryService.generateRegistryTree();
 
-    await this.memento.update(RegistryProvider.CACHE_KEY, registryTree.toJSON());
+    await this.memento.update(
+      Configs.REGISTRY_TREE_CACHE_KEY,
+      registryTree.toJSON()
+    );
   }
 
   private getCachedRegistryTree() {
-    return this.memento.get(RegistryProvider.CACHE_KEY);
+    return this.memento.get(Configs.REGISTRY_TREE_CACHE_KEY);
   }
 
   dispose() {

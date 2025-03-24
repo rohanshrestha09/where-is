@@ -77,7 +77,7 @@ export abstract class BaseRegistry {
     functionBody: acorn.BlockStatement,
     variableName: string
   ) {
-    let property: Record<string, acorn.AnyNode> = {};
+    const property: Record<string, acorn.AnyNode> = {};
     acornWalk.simple(functionBody, {
       VariableDeclarator: (declNode: acorn.VariableDeclarator) => {
         if (
@@ -85,45 +85,11 @@ export abstract class BaseRegistry {
           declNode.id.name === variableName &&
           declNode.init?.type === "ObjectExpression"
         ) {
-          property = this.createPropertyNodeMap(declNode.init);
+          Object.assign(property, this.createPropertyNodeMap(declNode.init));
         }
       },
     });
     return property;
-  }
-
-  private resolveSpreadElement(
-    prop: acorn.SpreadElement,
-    functionBody: acorn.BlockStatement
-  ) {
-    if (prop.argument.type !== "Identifier") return {};
-    return this.getVariablePropertyMap(functionBody, prop.argument.name);
-  }
-
-  private mergePropertyNodes(
-    properties: (acorn.Property | acorn.SpreadElement)[],
-    functionBody: acorn.BlockStatement
-  ) {
-    let allProperty: Record<string, acorn.Node> = {};
-
-    for (const prop of properties) {
-      if (prop.type === "SpreadElement") {
-        allProperty = Object.assign(
-          allProperty,
-          this.resolveSpreadElement(prop, functionBody)
-        );
-      } else if (prop.type === "Property") {
-        const props = this.createPropertyNodeMap({
-          type: "ObjectExpression",
-          properties: [prop],
-          start: prop.start,
-          end: prop.end,
-        });
-        allProperty = Object.assign(allProperty, props);
-      }
-    }
-
-    return allProperty;
   }
 
   private findReturnStatement(body: acorn.BlockStatement) {
@@ -133,7 +99,7 @@ export abstract class BaseRegistry {
   }
 
   protected findModelParameters(ast: acorn.Node) {
-    let argumentNames: string[] = [];
+    const argumentNames: string[] = [];
     try {
       acornWalk.simple(ast, {
         AssignmentExpression: (node: acorn.AssignmentExpression) => {
@@ -153,7 +119,7 @@ export abstract class BaseRegistry {
   }
 
   protected findControllerParameters(ast: acorn.Node) {
-    let argumentNames: string[] = [];
+    const argumentNames: string[] = [];
     try {
       acornWalk.simple(ast, {
         AssignmentExpression: (node: acorn.AssignmentExpression) => {
@@ -172,17 +138,93 @@ export abstract class BaseRegistry {
     }
   }
 
-  protected findControllerReturnNodeMap(ast: acorn.Node) {
-    let returnObjectProperty: Record<string, acorn.AnyNode> = {};
+  private collectFunctionDefinitions(ast: acorn.Node) {
+    const functionDefinitions: Record<string, acorn.AnyNode> = {};
 
+    acornWalk.simple(ast, {
+      FunctionDeclaration: (
+        node: acorn.FunctionDeclaration | acorn.AnonymousFunctionDeclaration
+      ) => {
+        if (node.id?.type === "Identifier") {
+          functionDefinitions[node.id.name] = node;
+        }
+      },
+      VariableDeclarator: (node: acorn.VariableDeclarator) => {
+        if (
+          node.id.type === "Identifier" &&
+          (node.init?.type === "FunctionExpression" ||
+            node.init?.type === "ArrowFunctionExpression")
+        ) {
+          functionDefinitions[node.id.name] = node.init;
+        }
+      },
+    });
+
+    return functionDefinitions;
+  }
+
+  private processObjectProperties(
+    properties: acorn.Property[],
+    functionDefinitions: Record<string, acorn.AnyNode>
+  ) {
+    const returnObjectProperty: Record<string, acorn.AnyNode> = {};
+
+    for (const prop of properties) {
+      const key =
+        prop.key.type === "Identifier"
+          ? prop.key.name
+          : prop.key.type === "Literal"
+          ? String(prop.key.value)
+          : null;
+
+      if (!key) continue;
+
+      if (prop.shorthand && functionDefinitions[key]) {
+        returnObjectProperty[key] = functionDefinitions[key];
+      } else {
+        returnObjectProperty[key] = prop.value;
+      }
+    }
+
+    return returnObjectProperty;
+  }
+
+  private processSpreadElements(
+    properties: acorn.SpreadElement[],
+    functionBody: acorn.BlockStatement
+  ) {
+    const returnObjectProperty: Record<string, acorn.AnyNode> = {};
+
+    for (const prop of properties) {
+      if (prop.argument.type !== "Identifier") continue;
+      const spreadProps = this.getVariablePropertyMap(
+        functionBody,
+        prop.argument.name
+      );
+      Object.assign(returnObjectProperty, spreadProps);
+    }
+
+    return returnObjectProperty;
+  }
+
+  protected findControllerReturnNodeMap(ast: acorn.Node) {
     try {
+      const functionDefinitions = this.collectFunctionDefinitions(ast);
+      const returnObjectProperty: Record<string, acorn.AnyNode> = {};
+
       acornWalk.simple(ast, {
         AssignmentExpression: (node: acorn.AssignmentExpression) => {
           if (!this.isControllerAssignment(node)) return;
           if (!this.isInternalsFunction(node.right)) return;
 
           if (node.right.body.type === "ObjectExpression") {
-            returnObjectProperty = this.createPropertyNodeMap(node.right.body);
+            Object.assign(
+              returnObjectProperty,
+              this.processObjectProperties(
+                node.right.body.properties.filter((a) => a.type === "Property"),
+                functionDefinitions
+              )
+            );
             return;
           }
 
@@ -193,20 +235,31 @@ export abstract class BaseRegistry {
           if (!returnStatement?.argument) return;
 
           if (returnStatement.argument.type === "ObjectExpression") {
-            returnObjectProperty = this.createPropertyNodeMap(
-              returnStatement.argument
-            );
-            returnObjectProperty = Object.assign(
+            Object.assign(
               returnObjectProperty,
-              this.mergePropertyNodes(
-                returnStatement.argument.properties,
+              this.processObjectProperties(
+                returnStatement.argument.properties.filter(
+                  (a) => a.type === "Property"
+                ),
+                functionDefinitions
+              )
+            );
+            Object.assign(
+              returnObjectProperty,
+              this.processSpreadElements(
+                returnStatement.argument.properties.filter(
+                  (a) => a.type === "SpreadElement"
+                ),
                 functionBody
               )
             );
           } else if (returnStatement.argument.type === "Identifier") {
-            returnObjectProperty = this.getVariablePropertyMap(
-              functionBody,
-              returnStatement.argument.name
+            Object.assign(
+              returnObjectProperty,
+              this.getVariablePropertyMap(
+                functionBody,
+                returnStatement.argument.name
+              )
             );
           }
         },
@@ -218,27 +271,42 @@ export abstract class BaseRegistry {
     }
   }
 
-  protected findModelReturnStatement(ast: acorn.Node) {
-    let returnNode: acorn.ReturnStatement | null = null;
+  protected findModelCallExpression(
+    ast: acorn.Node
+  ): acorn.CallExpression | null {
+    let modelCallExpr: acorn.CallExpression | null = null;
+    let variableName: string | null = null;
 
-    try {
-      acornWalk.simple(ast, {
-        AssignmentExpression: (node: acorn.AssignmentExpression) => {
-          if (!this.isModelAssignment(node)) return;
-          if (!this.isInternalsFunction(node.right)) return;
+    acornWalk.simple(ast, {
+      AssignmentExpression: (node: acorn.AssignmentExpression) => {
+        if (!this.isModelAssignment(node)) return;
+        if (!this.isInternalsFunction(node.right)) return;
 
-          const functionBody = this.extractBlockStatement(node.right);
-          if (!functionBody) return;
+        const functionBody = this.extractBlockStatement(node.right);
+        if (!functionBody) return;
 
-          const returnStatement = this.findReturnStatement(functionBody);
-          if (returnStatement) returnNode = returnStatement;
-        },
-      });
+        const returnStatement = this.findReturnStatement(functionBody);
+        if (!returnStatement?.argument) return;
 
-      return returnNode as acorn.ReturnStatement | null;
-    } catch (error) {
-      return null;
-    }
+        if (returnStatement.argument.type === "CallExpression") {
+          modelCallExpr = returnStatement.argument;
+        } else if (returnStatement.argument.type === "Identifier") {
+          variableName = returnStatement.argument.name;
+        }
+      },
+      VariableDeclarator: (node: acorn.VariableDeclarator) => {
+        if (!variableName) return;
+        if (
+          node.id.type === "Identifier" &&
+          node.id.name === variableName &&
+          node.init?.type === "CallExpression"
+        ) {
+          modelCallExpr = node.init;
+        }
+      },
+    });
+
+    return modelCallExpr;
   }
 
   protected abstract findRegistryTree(

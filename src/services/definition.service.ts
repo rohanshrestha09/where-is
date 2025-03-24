@@ -3,29 +3,30 @@ import * as acornWalk from "acorn-walk";
 import { FileUtil } from "../utils/file.util";
 import { GraphUtil } from "../utils/graph.util";
 import { ExtraUtil } from "../utils/extra.util";
+import { RegistryTree } from "../datastructures/registry-tree";
 
 export class DefinitionService {
   private readonly cAST: acorn.Program;
   private readonly documentText: string;
-  private readonly workspacePath?: string;
   private readonly functionName: string;
   private readonly lineNumber: number;
 
-  constructor(props: {
-    documentText: string;
-    functionName: string;
-    workspacePath?: string;
-    lineNumber: number;
-  }) {
-    this.cAST = acorn.parse(props.documentText, {
+  constructor(
+    private readonly registryTree: RegistryTree,
+    options: {
+      documentText: string;
+      functionName: string;
+      lineNumber: number;
+    }
+  ) {
+    this.cAST = acorn.parse(options.documentText, {
       ecmaVersion: "latest",
       sourceType: "script",
       locations: true,
     });
-    this.documentText = props.documentText;
-    this.workspacePath = props.workspacePath;
-    this.functionName = props.functionName;
-    this.lineNumber = props.lineNumber;
+    this.documentText = options.documentText;
+    this.functionName = options.functionName;
+    this.lineNumber = options.lineNumber;
   }
 
   private findRootFunctionArgumentName() {
@@ -172,90 +173,6 @@ export class DefinitionService {
     }
   }
 
-  private async findFunctionLocation(filePath: string) {
-    const content = await FileUtil.readFile(filePath);
-
-    try {
-      let functionNode: acorn.Node | null = null;
-
-      const nAST = acorn.parse(content, {
-        ecmaVersion: "latest",
-        sourceType: "script",
-        locations: true,
-      });
-
-      acornWalk.simple(nAST, {
-        FunctionDeclaration: (
-          node: acorn.FunctionDeclaration | acorn.AnonymousFunctionDeclaration
-        ) => {
-          if (
-            node.id?.type === "Identifier" &&
-            node.id.name === this.functionName
-          ) {
-            functionNode = node;
-          }
-        },
-        VariableDeclarator: (node: acorn.VariableDeclarator) => {
-          if (
-            node.id.type === "Identifier" &&
-            node.id.name === this.functionName &&
-            (node.init?.type === "FunctionExpression" ||
-              node.init?.type === "ArrowFunctionExpression")
-          ) {
-            functionNode = node;
-          }
-        },
-        Property: (node: acorn.Property | acorn.AssignmentProperty) => {
-          if (
-            node.key.type === "Identifier" &&
-            node.key.name === this.functionName &&
-            (node.value.type === "FunctionExpression" ||
-              node.value.type === "ArrowFunctionExpression")
-          ) {
-            functionNode = node;
-          }
-        },
-      });
-
-      if (functionNode) {
-        functionNode = functionNode as acorn.Node;
-        const path = filePath;
-        const line = functionNode.loc?.start?.line ?? 0;
-        const text = content.slice(functionNode.start, functionNode.end);
-        const loc = text.split("\n").length;
-        return { content, path, line, text, loc };
-      }
-    } catch (error) {
-      return null;
-    }
-
-    return null;
-  }
-
-  private async findFilePathsByReference(
-    nameReference: string,
-    pathReference: string
-  ) {
-    const directPattern = `**/${ExtraUtil.convertToKebabCase(
-      nameReference
-    )}.js`;
-    let filePaths = await FileUtil.findFilesByPattern(directPattern, {
-      cwd: this.workspacePath,
-    });
-    if (filePaths.length) return filePaths;
-
-    const globPattern = `**/*-${ExtraUtil.getGlobPathReference(
-      pathReference
-    )}.js`;
-    const candidateFiles = await FileUtil.findFilesByPattern(globPattern, {
-      cwd: this.workspacePath,
-    });
-
-    return await FileUtil.findBestMatchingFiles(candidateFiles, nameReference, {
-      cutoff: 50,
-    });
-  }
-
   async findFunctionDefiniton() {
     if (!ExtraUtil.isValidFunctionName(this.functionName)) return null;
 
@@ -283,31 +200,27 @@ export class DefinitionService {
       );
 
       const paths =
-        graph.findAllPathsThrough(
+        graph.findAllPathsThroughWithData(
           this.functionName,
           functionCallOutgoingEdges[0],
           rootFunctionArgumentName
         )[0] ?? [];
       if (!paths.length) return null;
 
-      const pathReference = paths[paths.length - 3];
-      const nameReference = paths[paths.length - 5];
-      if (!pathReference || !nameReference) return null;
+      const nonAssignmentPaths = paths
+        .filter(([_, data]) => !data?.isAssignmentTarget)
+        .map(([vertex]) => vertex);
+      if (nonAssignmentPaths.length < 5) return null;
 
-      const filePaths = await this.findFilePathsByReference(
-        nameReference,
-        pathReference
+      const functionNode = this.registryTree.getNode(
+        [...nonAssignmentPaths].reverse()
       );
-      if (!filePaths.length) return null;
+      if (!functionNode) return null;
 
-      const filePath = await FileUtil.findFirstOccurringFile(
-        new RegExp(`\\w+Name:?\\s*(?:['"\`])${nameReference}(?:['"\`])`),
-        filePaths,
-        { batchSize: 30 }
-      );
-      if (!filePath) return null;
+      const fileContent = await FileUtil.readFile(functionNode.path);
+      const text = fileContent.slice(functionNode.start, functionNode.end);
 
-      return this.findFunctionLocation(filePath);
+      return { ...functionNode, text };
     } catch (err) {
       return null;
     }

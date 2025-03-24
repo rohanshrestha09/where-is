@@ -32,7 +32,7 @@ export class ControllerRegistry extends BaseRegistry {
         name,
         start: currentNode.start,
         end: currentNode.end,
-        loc: currentNode.loc,
+        loc: currentNode.loc!,
       };
 
       tree.addNode([...this.basePath, controllerName, name], node);

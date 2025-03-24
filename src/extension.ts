@@ -6,6 +6,7 @@ import { DefinitionProvider } from "./providers/definition.provider";
 import { HoverProvider } from "./providers/hover.provider";
 import { DiagnosticProvider } from "./providers/diagnostic.provider";
 import { RegistryProvider } from "./providers/registry.provider";
+import { AutocompletionProvider } from "./providers/autocompletion.provider";
 
 const locationStore = new Map<string, vscode.Location>();
 const hoverStore = new Map<string, vscode.Hover>();
@@ -39,6 +40,16 @@ export async function activate(context: vscode.ExtensionContext) {
   const registryProvider = new RegistryProvider(context.globalState);
   context.subscriptions.push(registryProvider);
 
+  // const autocompletionProvider = new AutocompletionProvider(
+  //   context.globalState
+  // );
+  // const autocompletionDisposable =
+  //   vscode.languages.registerCompletionItemProvider(
+  //     "javascript",
+  //     autocompletionProvider
+  //   );
+  // context.subscriptions.push(autocompletionDisposable);
+
   configs.when("enableDiagnostic", true, () => {
     const diagnosticProvider = new DiagnosticProvider({
       language: "javascript",
@@ -47,7 +58,10 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   configs.when("enableDefinition", true, () => {
-    const definitionProvider = new DefinitionProvider(locationStore);
+    const definitionProvider = new DefinitionProvider(
+      context.globalState,
+      locationStore
+    );
     const definitionDisposable = vscode.languages.registerDefinitionProvider(
       "javascript",
       definitionProvider
@@ -56,7 +70,7 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   configs.when("enableHover", true, () => {
-    const hoverProvider = new HoverProvider(hoverStore);
+    const hoverProvider = new HoverProvider(context.globalState, hoverStore);
     const hoverDisposable = vscode.languages.registerHoverProvider(
       "javascript",
       hoverProvider

@@ -6,7 +6,7 @@ export type RegistryNode = {
   name: string;
   start: number;
   end: number;
-  loc?: {
+  loc: {
     start: {
       line: number;
       column: number;
@@ -15,7 +15,7 @@ export type RegistryNode = {
       line: number;
       column: number;
     };
-  } | null;
+  };
 };
 
 /**

@@ -3,7 +3,8 @@ import * as acornWalk from "acorn-walk";
 import { DirectedGraph } from "../datastructures/graph";
 
 export class GraphUtil {
-  private readonly graph: DirectedGraph = new DirectedGraph();
+  private readonly graph: DirectedGraph<{ isAssignmentTarget: boolean }> =
+    new DirectedGraph();
 
   private extractNodePath(node: acorn.AnyNode) {
     const pathParts: string[] = [];
@@ -70,18 +71,19 @@ export class GraphUtil {
       const source = pathParts[i];
       const target = pathParts[i - 1];
       this.addDirectedEdge(source, target);
+      this.graph.setVertexData(source, { isAssignmentTarget: false });
     }
   }
 
   private addDirectedEdge(source: string, target: string) {
     try {
       this.graph.addEdge(source, target);
-    } catch (error) {
-    }
+    } catch (error) {}
   }
 
   private processNodeAssignment(variable: string, value: string) {
     this.graph.addVertex(variable);
+    this.graph.setVertexData(variable, { isAssignmentTarget: true });
     const parts = this.parseExpressionToNodePath(value);
 
     if (parts.length > 0) {
