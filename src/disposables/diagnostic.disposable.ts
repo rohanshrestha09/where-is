@@ -1,10 +1,12 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import { Configs } from "../configs";
 import { DiagnosticService } from "../services/diagnostic.service";
 
-export class DiagnosticProvider implements vscode.Disposable {
-  private diagnosticCollection =
-    vscode.languages.createDiagnosticCollection("where-is.linter");
+export class DiagnosticDisposable implements vscode.Disposable {
+  private diagnosticCollection = vscode.languages.createDiagnosticCollection(
+    Configs.DIAGNOSTIC_COLLECTION_NAME
+  );
   private disposables: vscode.Disposable[] = [];
 
   constructor(private readonly options: { language: string }) {

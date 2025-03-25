@@ -1,13 +1,16 @@
 import * as acorn from "acorn";
 import * as acornWalk from "acorn-walk";
-import { ExtraUtil } from "../utils/extra.util";
 import { FileUtil } from "../utils/file.util";
+import { ExtraUtil } from "../utils/extra.util";
 import { RegistryTree } from "../datastructures/registry-tree";
 
 export abstract class BaseRegistry {
   constructor(
-    private readonly workspacePath: string,
-    private readonly pluginName: string
+    private readonly pluginName: string,
+    private readonly options: {
+      workspacePath?: string;
+      documentPath?: string;
+    }
   ) {}
 
   protected get basePath() {
@@ -155,7 +158,7 @@ export abstract class BaseRegistry {
           (node.init?.type === "FunctionExpression" ||
             node.init?.type === "ArrowFunctionExpression")
         ) {
-          functionDefinitions[node.id.name] = node.init;
+          functionDefinitions[node.id.name] = node;
         }
       },
     });
@@ -221,7 +224,9 @@ export abstract class BaseRegistry {
             Object.assign(
               returnObjectProperty,
               this.processObjectProperties(
-                node.right.body.properties.filter((a) => a.type === "Property"),
+                node.right.body.properties.filter(
+                  (prop) => prop.type === "Property"
+                ),
                 functionDefinitions
               )
             );
@@ -239,7 +244,7 @@ export abstract class BaseRegistry {
               returnObjectProperty,
               this.processObjectProperties(
                 returnStatement.argument.properties.filter(
-                  (a) => a.type === "Property"
+                  (prop) => prop.type === "Property"
                 ),
                 functionDefinitions
               )
@@ -248,7 +253,7 @@ export abstract class BaseRegistry {
               returnObjectProperty,
               this.processSpreadElements(
                 returnStatement.argument.properties.filter(
-                  (a) => a.type === "SpreadElement"
+                  (prop) => prop.type === "SpreadElement"
                 ),
                 functionBody
               )
@@ -316,15 +321,26 @@ export abstract class BaseRegistry {
 
   protected abstract findRegistryParameters(ast: acorn.Node): string[];
 
-  async generateRegistryTree() {
-    const mainTree = new RegistryTree();
+  async findFilePaths() {
+    if (!this.options.workspacePath && !this.options.documentPath) return [];
+
+    if (this.options.documentPath) return [this.options.documentPath];
 
     const pattern = `**/*-${ExtraUtil.getGlobPathReference(
       this.pluginName
     )}.js`;
+
     const filePaths = await FileUtil.findFilesByPattern(pattern, {
-      cwd: this.workspacePath,
+      cwd: this.options.workspacePath,
     });
+
+    return filePaths;
+  }
+
+  async generateRegistryTree() {
+    const mainTree = new RegistryTree();
+
+    const filePaths = await this.findFilePaths();
 
     for (const path of filePaths) {
       const content = await FileUtil.readFile(path);
@@ -334,6 +350,7 @@ export abstract class BaseRegistry {
         ecmaVersion: "latest",
         sourceType: "module",
         locations: true,
+        ranges: false,
       });
 
       const registryParameters = this.findRegistryParameters(ast);

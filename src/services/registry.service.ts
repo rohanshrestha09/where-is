@@ -1,3 +1,4 @@
+import path from "path";
 import { RegistryTree } from "../datastructures/registry-tree";
 import { ConfigRegistry } from "../registries/config.registry";
 import { ControllerRegistry } from "../registries/controller.registry";
@@ -6,40 +7,47 @@ import { ServiceRegistry } from "../registries/service.registry";
 import { UtilityFunctionRegistry } from "../registries/utility-function.registry";
 
 export class RegistryService {
-  constructor(private readonly workspacePath: string) {}
+  private readonly registryOrder = [
+    ConfigRegistry,
+    ServiceRegistry,
+    ControllerRegistry,
+    ModelRegistry,
+    UtilityFunctionRegistry,
+  ];
 
-  async generateRegistryTree() {
+  private readonly registryMap = new Map([
+    ["config", ConfigRegistry],
+    ["service", ServiceRegistry],
+    ["controller", ControllerRegistry],
+    ["model", ModelRegistry],
+    ["function", UtilityFunctionRegistry],
+  ]);
+
+  async generatePartialRegistryTree(documentPath: string) {
+    const filename = path.parse(documentPath).name;
+
+    const Registry =
+      Object.entries(this.registryMap).find(([suffix]) =>
+        filename.endsWith(suffix)
+      )?.[1] ?? null;
+    if (!Registry) return null;
+
+    const registry = new Registry({ documentPath });
+    const registryTree = await registry.generateRegistryTree();
+    return registryTree;
+  }
+
+  async generateCompleteRegistryTree(workspacePath: string) {
     const tree = new RegistryTree();
 
-    const configRegistry = new ConfigRegistry(this.workspacePath);
-    const configRegistryTree = await configRegistry.generateRegistryTree();
-
-    const serviceRegistry = new ServiceRegistry(this.workspacePath);
-    const serviceRegistryTree = await serviceRegistry.generateRegistryTree();
-
-    const controllerRegistry = new ControllerRegistry(this.workspacePath);
-    const controllerRegistryTree =
-      await controllerRegistry.generateRegistryTree();
-
-    const modelRegistry = new ModelRegistry(this.workspacePath);
-    const modelRegistryTree = await modelRegistry.generateRegistryTree();
-
-    const utilityFunctionRegistry = new UtilityFunctionRegistry(
-      this.workspacePath
+    const registryTrees = await Promise.all(
+      this.registryOrder.map(async (Registry) => {
+        const registry = new Registry({ workspacePath });
+        return registry.generateRegistryTree();
+      })
     );
-    const utilityFunctionRegistryTree =
-      await utilityFunctionRegistry.generateRegistryTree();
 
-    for (const subTree of [
-      configRegistryTree,
-      serviceRegistryTree,
-      controllerRegistryTree,
-      modelRegistryTree,
-      utilityFunctionRegistryTree,
-    ]) {
-      tree.merge(subTree);
-    }
-
+    registryTrees.forEach((subTree) => tree.merge(subTree));
     return tree;
   }
 }

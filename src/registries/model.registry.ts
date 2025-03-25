@@ -1,10 +1,12 @@
 import * as acorn from "acorn";
 import { BaseRegistry } from "./base.registry";
+import { ExtraUtil } from "../utils/extra.util";
+import { FileUtil } from "../utils/file.util";
 import { RegistryNode, RegistryTree } from "../datastructures/registry-tree";
 
 export class ModelRegistry extends BaseRegistry {
-  constructor(workspacePath: string) {
-    super(workspacePath, "core-models");
+  constructor(options: { workspacePath?: string; documentPath?: string }) {
+    super("core-models", options);
   }
 
   findRegistryParameters(ast: acorn.Node) {
@@ -38,7 +40,10 @@ export class ModelRegistry extends BaseRegistry {
       loc: modelCallExpr.loc!,
     };
 
-    tree.addNode([...this.basePath, modelName], registryNode);
+    const nodePath = [...this.basePath, modelName];
+
+    tree.addNode(nodePath, registryNode);
+
     return tree;
   }
 }

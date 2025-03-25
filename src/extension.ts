@@ -4,11 +4,11 @@ import * as path from "path";
 import { Configs } from "./configs";
 import { DefinitionProvider } from "./providers/definition.provider";
 import { HoverProvider } from "./providers/hover.provider";
-import { DiagnosticProvider } from "./providers/diagnostic.provider";
-import { RegistryProvider } from "./providers/registry.provider";
 import { AutocompletionProvider } from "./providers/autocompletion.provider";
+import { DiagnosticDisposable } from "./disposables/diagnostic.disposable";
+import { RegistryDisposable } from "./disposables/registry.disposable";
 
-const locationStore = new Map<string, vscode.Location>();
+const definitionStore = new Map<string, vscode.Location>();
 const hoverStore = new Map<string, vscode.Hover>();
 
 async function isProjectEnabled(enabledWorkspaces: string[]) {
@@ -37,30 +37,25 @@ export async function activate(context: vscode.ExtensionContext) {
   const isEnabled = await isProjectEnabled(enabledProjects);
   if (!isEnabled) return;
 
-  const registryProvider = new RegistryProvider(context.globalState);
-  context.subscriptions.push(registryProvider);
+  const registryDisposable = new RegistryDisposable(context.globalState);
+  context.subscriptions.push(registryDisposable);
 
-  // const autocompletionProvider = new AutocompletionProvider(
-  //   context.globalState
-  // );
-  // const autocompletionDisposable =
-  //   vscode.languages.registerCompletionItemProvider(
-  //     "javascript",
-  //     autocompletionProvider
-  //   );
-  // context.subscriptions.push(autocompletionDisposable);
-
-  configs.when("enableDiagnostic", true, () => {
-    const diagnosticProvider = new DiagnosticProvider({
-      language: "javascript",
-    });
-    context.subscriptions.push(diagnosticProvider);
+  configs.when("enableAutocompletion", true, () => {
+    const autocompletionProvider = new AutocompletionProvider(
+      context.globalState
+    );
+    const autocompletionDisposable =
+      vscode.languages.registerCompletionItemProvider(
+        "javascript",
+        autocompletionProvider
+      );
+    context.subscriptions.push(autocompletionDisposable);
   });
 
   configs.when("enableDefinition", true, () => {
     const definitionProvider = new DefinitionProvider(
       context.globalState,
-      locationStore
+      definitionStore
     );
     const definitionDisposable = vscode.languages.registerDefinitionProvider(
       "javascript",
@@ -76,5 +71,12 @@ export async function activate(context: vscode.ExtensionContext) {
       hoverProvider
     );
     context.subscriptions.push(hoverDisposable);
+  });
+
+  configs.when("enableDiagnostic", true, () => {
+    const diagnosticDisposable = new DiagnosticDisposable({
+      language: "javascript",
+    });
+    context.subscriptions.push(diagnosticDisposable);
   });
 }

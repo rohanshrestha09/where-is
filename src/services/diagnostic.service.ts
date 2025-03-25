@@ -3,13 +3,14 @@ import * as acornWalk from "acorn-walk";
 import { ExtraUtil } from "../utils/extra.util";
 
 export class DiagnosticService {
-  private readonly cAST: acorn.Program;
+  private readonly ast: acorn.Program;
 
   constructor(documentText: string, private readonly documentName: string) {
-    this.cAST = acorn.parse(documentText, {
+    this.ast = acorn.parse(documentText, {
       ecmaVersion: "latest",
       sourceType: "script",
       locations: true,
+      ranges: false,
     });
   }
 
@@ -20,7 +21,7 @@ export class DiagnosticService {
       end: number;
     }[] = [];
 
-    acornWalk.simple(this.cAST, {
+    acornWalk.simple(this.ast, {
       AssignmentExpression: (node: acorn.AssignmentExpression & acorn.Node) => {
         if (
           node.left.type === "MemberExpression" &&

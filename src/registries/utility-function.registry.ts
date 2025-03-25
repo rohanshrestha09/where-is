@@ -3,8 +3,8 @@ import { BaseRegistry } from "./base.registry";
 import { RegistryNode, RegistryTree } from "../datastructures/registry-tree";
 
 export class UtilityFunctionRegistry extends BaseRegistry {
-  constructor(workspacePath: string) {
-    super(workspacePath, "core-utility-functions");
+  constructor(options: { workspacePath?: string; documentPath?: string }) {
+    super("core-utility-functions", options);
   }
 
   findRegistryParameters(ast: acorn.Node) {
@@ -33,7 +33,9 @@ export class UtilityFunctionRegistry extends BaseRegistry {
         loc: currentNode.loc!,
       };
 
-      tree.addNode([...this.basePath, utilityName, name], node);
+      const nodePath = [...this.basePath, utilityName, name];
+
+      tree.addNode(nodePath, node);
     }
 
     return tree;

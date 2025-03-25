@@ -2,6 +2,10 @@ import * as vscode from "vscode";
 
 export class Configs {
   static readonly REGISTRY_TREE_CACHE_KEY = "where-is.registryTree";
+  static readonly DIAGNOSTIC_COLLECTION_NAME = "where-is.linter";
+  static readonly REGISTRY_TREE_REFRESH_COMMAND =
+    "where-is.refreshRegistryTree";
+
   private readonly config: vscode.WorkspaceConfiguration;
 
   constructor(configName: string) {

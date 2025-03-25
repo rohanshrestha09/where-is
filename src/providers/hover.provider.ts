@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
+import { Configs } from "../configs";
 import { DefinitionService } from "../services/definition.service";
 import { RegistryTree } from "../datastructures/registry-tree";
-import { Configs } from "../configs";
 
 export class HoverProvider implements vscode.HoverProvider {
   constructor(
@@ -12,10 +12,14 @@ export class HoverProvider implements vscode.HoverProvider {
   async provideHover(document: vscode.TextDocument, position: vscode.Position) {
     const documentText = document.getText();
     const wordRange = document.getWordRangeAtPosition(position);
-    const functionName = document.getText(wordRange);
     const lineNumber = position.line;
-
+    
+    const functionName = document.getText(wordRange);
     if (!functionName) return null;
+
+    const cacheKey = `${document.uri.fsPath}:${lineNumber}:${functionName}`;
+    const cachedHover = this.store.get(cacheKey);
+    if (cachedHover) return cachedHover;
 
     const registryTreeJson = this.memento.get<RegistryTree>(
       Configs.REGISTRY_TREE_CACHE_KEY
@@ -32,13 +36,6 @@ export class HoverProvider implements vscode.HoverProvider {
         lineNumber,
       }
     );
-
-    const functionCallExpression =
-      definitionService.findFunctionCallExpression();
-
-    if (functionCallExpression && this.store.has(functionCallExpression)) {
-      return this.store.get(functionCallExpression);
-    }
 
     const functionDefinition = await definitionService.findFunctionDefiniton();
     if (!functionDefinition) return null;
@@ -71,9 +68,7 @@ export class HoverProvider implements vscode.HoverProvider {
       )
     );
 
-    if (functionCallExpression) {
-      this.store.set(functionCallExpression, hover);
-    }
+    this.store.set(cacheKey, hover);
 
     return hover;
   }

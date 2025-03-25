@@ -6,7 +6,7 @@ import { ExtraUtil } from "../utils/extra.util";
 import { RegistryTree } from "../datastructures/registry-tree";
 
 export class DefinitionService {
-  private readonly cAST: acorn.Program;
+  private readonly ast: acorn.Program;
   private readonly documentText: string;
   private readonly functionName: string;
   private readonly lineNumber: number;
@@ -19,10 +19,11 @@ export class DefinitionService {
       lineNumber: number;
     }
   ) {
-    this.cAST = acorn.parse(options.documentText, {
+    this.ast = acorn.parse(options.documentText, {
       ecmaVersion: "latest",
       sourceType: "script",
       locations: true,
+      ranges: false,
     });
     this.documentText = options.documentText;
     this.functionName = options.functionName;
@@ -33,7 +34,7 @@ export class DefinitionService {
     let argumentName: string | null = null;
 
     try {
-      acornWalk.simple(this.cAST, {
+      acornWalk.simple(this.ast, {
         AssignmentExpression: (node: acorn.AssignmentExpression) => {
           if (
             node.left.type === "MemberExpression" &&
@@ -41,7 +42,8 @@ export class DefinitionService {
             node.left.object.name === "internals" &&
             node.left.property.type === "Identifier" &&
             (node.left.property.name === "controller" ||
-              node.left.property.name === "applyRoutes")
+              node.left.property.name === "applyRoutes" ||
+              node.left.property.name === "Model")
           ) {
             if (
               (node.right.type === "ArrowFunctionExpression" ||
@@ -67,7 +69,7 @@ export class DefinitionService {
       const relevantVariables = new Set<string>();
 
       // First pass: collect variables that are part of member expressions
-      acornWalk.simple(this.cAST, {
+      acornWalk.simple(this.ast, {
         MemberExpression: (node: acorn.MemberExpression) => {
           if (node.object.type === "Identifier") {
             relevantVariables.add(node.object.name);
@@ -76,7 +78,7 @@ export class DefinitionService {
       });
 
       // Second pass: only collect assignments for relevant variables
-      acornWalk.simple(this.cAST, {
+      acornWalk.simple(this.ast, {
         VariableDeclarator: (node: acorn.VariableDeclarator) => {
           if (
             node.id.type === "Identifier" &&
@@ -98,7 +100,7 @@ export class DefinitionService {
     }
   }
 
-  findFunctionCallExpression() {
+  private findFunctionCallExpression() {
     try {
       let functionCallParts: string[] = [];
       let closestDistance = Infinity;
@@ -123,7 +125,7 @@ export class DefinitionService {
         return parts;
       };
 
-      acornWalk.simple(this.cAST, {
+      acornWalk.simple(this.ast, {
         MemberExpression: (node: acorn.MemberExpression) => {
           const parts = extractChain(node);
           const lastPart = parts[parts.length - 1];
@@ -217,8 +219,11 @@ export class DefinitionService {
       );
       if (!functionNode) return null;
 
-      const fileContent = await FileUtil.readFile(functionNode.path);
-      const text = fileContent.slice(functionNode.start, functionNode.end);
+      const text = await FileUtil.readFileRange(
+        functionNode.path,
+        functionNode.start,
+        functionNode.end
+      );
 
       return { ...functionNode, text };
     } catch (err) {

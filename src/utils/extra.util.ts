@@ -1,5 +1,5 @@
-import { MAX_FUNCTION_LENGTH } from "../constants";
 import * as acorn from "acorn";
+import { MAX_FUNCTION_LENGTH } from "../constants";
 
 export class ExtraUtil {
   static isKeyword(word: string) {

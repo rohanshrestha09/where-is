@@ -25,6 +25,11 @@
     "configuration": {
       "title": "Where is?",
       "properties": {
+        "whereIs.enableAutocompletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable autocompletion for function calls"
+        },
         "whereIs.enableHover": {
           "type": "boolean",
           "default": true,
@@ -54,8 +59,8 @@
     },
     "commands": [
       {
-        "command": "where-is.refreshRegistry",
-        "title": "Where Is: Refresh Registry"
+        "command": "where-is.refreshRegistryTree",
+        "title": "Where Is: Refresh Registry Tree"
       }
     ]
   },

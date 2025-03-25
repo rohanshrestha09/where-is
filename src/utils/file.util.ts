@@ -8,6 +8,20 @@ export class FileUtil {
     return await fs.promises.readFile(filePath, "utf8");
   }
 
+  static async readFileRange(
+    path: string,
+    start: number,
+    end: number
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      let content = "";
+      fs.createReadStream(path, { start, end })
+        .on("data", (chunk) => (content += chunk))
+        .on("end", () => resolve(content))
+        .on("error", reject);
+    });
+  }
+
   static async *readFileForwardStreamByLine(
     filePath: string,
     chunkSize = 1024
