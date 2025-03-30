@@ -5,7 +5,11 @@ import { createInterface } from "readline";
 
 export class FileUtil {
   static async readFile(filePath: string) {
-    return await fs.promises.readFile(filePath, "utf8");
+    try {
+      return await fs.promises.readFile(filePath, "utf8");
+    } catch (error) {
+      return null;
+    }
   }
 
   static async readFileRange(
@@ -134,11 +138,13 @@ export class FileUtil {
     pattern: string,
     options: { cwd?: string | URL }
   ) {
-    const matchedFilePaths = await Glob.glob(pattern, {
-      cwd: options.cwd,
-      absolute: true,
-      ignore: "**/node_modules/**",
-    });
+    const matchedFilePaths = (
+      await Glob.glob(pattern, {
+        cwd: options.cwd,
+        absolute: true,
+        ignore: "**/node_modules/**",
+      })
+    );
 
     return matchedFilePaths;
   }

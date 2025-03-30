@@ -3,6 +3,10 @@ import * as acornWalk from "acorn-walk";
 import { FileUtil } from "../utils/file.util";
 import { ExtraUtil } from "../utils/extra.util";
 import { RegistryTree } from "../datastructures/registry-tree";
+import {
+  REGISTRY_TREE_PLUGIN_NODE,
+  REGISTRY_TREE_ROOT_NODE,
+} from "../constants";
 
 export abstract class BaseRegistry {
   constructor(
@@ -14,7 +18,11 @@ export abstract class BaseRegistry {
   ) {}
 
   protected get basePath() {
-    return ["server", "plugins", this.pluginName];
+    return [
+      REGISTRY_TREE_ROOT_NODE,
+      REGISTRY_TREE_PLUGIN_NODE,
+      this.pluginName,
+    ];
   }
 
   private isControllerAssignment(node: acorn.AssignmentExpression) {

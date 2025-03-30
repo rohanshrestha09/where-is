@@ -54,9 +54,6 @@ export class RegistryDisposable implements vscode.Disposable {
   }
 
   private async buildRegistryTree() {
-    const cachedRegistryTreeJson = this.getCachedRegistryTree();
-    if (cachedRegistryTreeJson) return;
-
     const workspacePath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspacePath) return;
 
@@ -65,33 +62,37 @@ export class RegistryDisposable implements vscode.Disposable {
       workspacePath
     );
 
-    await this.memento.update(
-      Configs.REGISTRY_TREE_CACHE_KEY,
-      registryTree.toJSON()
-    );
+    await this.updateCachedRegistryTree(registryTree);
   }
 
   private async buildRegistryTreeForDocument(document: vscode.TextDocument) {
-    const cachedRegistryTreeJson = this.getCachedRegistryTree();
-    if (!cachedRegistryTreeJson) return;
-
-    const registryTree = RegistryTree.fromJSON(cachedRegistryTreeJson);
+    const cachedRegistryTree = this.getCachedRegistryTree();
+    if (!cachedRegistryTree) return;
 
     const registryService = new RegistryService();
     const partialRegistryTree =
       await registryService.generatePartialRegistryTree(document.uri.fsPath);
     if (!partialRegistryTree) return null;
 
-    registryTree.merge(partialRegistryTree);
+    cachedRegistryTree.merge(partialRegistryTree);
 
+    await this.updateCachedRegistryTree(cachedRegistryTree);
+  }
+
+  private getCachedRegistryTree() {
+    const cachedRegistryTreeJson = this.memento.get(
+      Configs.REGISTRY_TREE_CACHE_KEY
+    );
+    if (!cachedRegistryTreeJson) return null;
+
+    return RegistryTree.fromJSON(cachedRegistryTreeJson);
+  }
+
+  private async updateCachedRegistryTree(registryTree: RegistryTree) {
     await this.memento.update(
       Configs.REGISTRY_TREE_CACHE_KEY,
       registryTree.toJSON()
     );
-  }
-
-  private getCachedRegistryTree() {
-    return this.memento.get(Configs.REGISTRY_TREE_CACHE_KEY);
   }
 
   dispose() {

@@ -13,7 +13,7 @@ export class HoverProvider implements vscode.HoverProvider {
     const documentText = document.getText();
     const wordRange = document.getWordRangeAtPosition(position);
     const lineNumber = position.line;
-    
+
     const functionName = document.getText(wordRange);
     if (!functionName) return null;
 
@@ -21,9 +21,7 @@ export class HoverProvider implements vscode.HoverProvider {
     const cachedHover = this.store.get(cacheKey);
     if (cachedHover) return cachedHover;
 
-    const registryTreeJson = this.memento.get<RegistryTree>(
-      Configs.REGISTRY_TREE_CACHE_KEY
-    );
+    const registryTreeJson = this.memento.get(Configs.REGISTRY_TREE_CACHE_KEY);
     if (!registryTreeJson) return null;
 
     const startTime = performance.now();

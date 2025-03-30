@@ -4,7 +4,6 @@ import * as path from "path";
 import { Configs } from "./configs";
 import { DefinitionProvider } from "./providers/definition.provider";
 import { HoverProvider } from "./providers/hover.provider";
-import { AutocompletionProvider } from "./providers/autocompletion.provider";
 import { DiagnosticDisposable } from "./disposables/diagnostic.disposable";
 import { RegistryDisposable } from "./disposables/registry.disposable";
 
@@ -39,18 +38,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const registryDisposable = new RegistryDisposable(context.globalState);
   context.subscriptions.push(registryDisposable);
-
-  configs.when("enableAutocompletion", true, () => {
-    const autocompletionProvider = new AutocompletionProvider(
-      context.globalState
-    );
-    const autocompletionDisposable =
-      vscode.languages.registerCompletionItemProvider(
-        "javascript",
-        autocompletionProvider
-      );
-    context.subscriptions.push(autocompletionDisposable);
-  });
 
   configs.when("enableDefinition", true, () => {
     const definitionProvider = new DefinitionProvider(

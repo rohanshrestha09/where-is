@@ -2,7 +2,7 @@
   "name": "where-is",
   "displayName": "Where is?",
   "description": "",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "rohanshresthaportpro",
   "repository": {
     "type": "git",
@@ -59,7 +59,7 @@
     },
     "commands": [
       {
-        "command": "where-is.refreshRegistryTree",
+        "command": "whereIs.refreshRegistryTree",
         "title": "Where Is: Refresh Registry Tree"
       }
     ]

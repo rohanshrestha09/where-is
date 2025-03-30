@@ -11,6 +11,10 @@ export class DirectedGraph<T = any> {
     this.incomingEdges = new Map();
   }
 
+  /**
+   * Adds a new vertex to the graph if it doesn't already exist.
+   * @param vertex - The identifier of the vertex to add
+   */
   addVertex(vertex: string): void {
     if (!this.vertices.has(vertex)) {
       this.vertices.set(vertex, { edges: new Set() });
@@ -18,10 +22,20 @@ export class DirectedGraph<T = any> {
     }
   }
 
+  /**
+   * Retrieves the data associated with a vertex.
+   * @param vertex - The identifier of the vertex
+   * @returns The vertex's data if it exists, undefined otherwise
+   */
   getVertexData(vertex: string): T | undefined {
     return this.vertices.get(vertex)?.data;
   }
 
+  /**
+   * Sets or updates the data associated with a vertex.
+   * @param vertex - The identifier of the vertex
+   * @param data - The data to associate with the vertex
+   */
   setVertexData(vertex: string, data: T): void {
     if (this.vertices.has(vertex)) {
       const vertexInfo = this.vertices.get(vertex)!;
@@ -29,6 +43,12 @@ export class DirectedGraph<T = any> {
     }
   }
 
+  /**
+   * Adds a directed edge between two vertices.
+   * Creates the vertices if they don't already exist.
+   * @param source - The source vertex of the edge
+   * @param target - The target vertex of the edge
+   */
   addEdge(source: string, target: string): void {
     if (!this.vertices.has(source)) {
       this.addVertex(source);
@@ -39,6 +59,33 @@ export class DirectedGraph<T = any> {
 
     this.vertices.get(source)!.edges.add(target);
     this.incomingEdges.get(target)!.add(source);
+  }
+
+  /**
+   * Renames a vertex while maintaining all its connections.
+   * If the old vertex doesn't exist or the new vertex already exists, the operation is ignored.
+   * @param oldVertex - The current name of the vertex
+   * @param newVertex - The new name for the vertex
+   */
+  renameVertex(oldVertex: string, newVertex: string): void {
+    if (!this.vertices.has(oldVertex) || this.vertices.has(newVertex)) return;
+
+    const vertexInfo = this.vertices.get(oldVertex)!;
+
+    this.addVertex(newVertex);
+    if (vertexInfo.data) {
+      this.setVertexData(newVertex, vertexInfo.data);
+    }
+
+    for (const target of vertexInfo.edges) {
+      this.addEdge(newVertex, target);
+    }
+
+    for (const source of this.getIncomingEdges(oldVertex)) {
+      this.addEdge(source, newVertex);
+    }
+
+    this.removeVertex(oldVertex);
   }
 
   /**

@@ -4,6 +4,7 @@ import { FileUtil } from "../utils/file.util";
 import { GraphUtil } from "../utils/graph.util";
 import { ExtraUtil } from "../utils/extra.util";
 import { RegistryTree } from "../datastructures/registry-tree";
+import { REGISTRY_TREE_ROOT_NODE } from "../constants";
 
 export class DefinitionService {
   private readonly ast: acorn.Program;
@@ -57,7 +58,7 @@ export class DefinitionService {
         },
       });
 
-      return argumentName as string | null;
+      return argumentName;
     } catch (error) {
       return null;
     }
@@ -191,12 +192,18 @@ export class DefinitionService {
       const graph = graphUtil.buildDirectedGraph(allAssignments, [
         functionCallExpression,
       ]);
+      graph.renameVertex(rootFunctionArgumentName, REGISTRY_TREE_ROOT_NODE);
 
       const functionCallGraphUtil = new GraphUtil();
       const functionCallGraph =
         functionCallGraphUtil.buildDirectedGraphFromMethodCallExpressions([
           functionCallExpression,
         ]);
+      functionCallGraph.renameVertex(
+        rootFunctionArgumentName,
+        REGISTRY_TREE_ROOT_NODE
+      );
+
       const functionCallOutgoingEdges = functionCallGraph.getOutgoingEdges(
         this.functionName
       );
@@ -205,7 +212,7 @@ export class DefinitionService {
         graph.findAllPathsThroughWithData(
           this.functionName,
           functionCallOutgoingEdges[0],
-          rootFunctionArgumentName
+          REGISTRY_TREE_ROOT_NODE
         )[0] ?? [];
       if (!paths.length) return null;
 

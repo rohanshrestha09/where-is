@@ -15,13 +15,13 @@ export class RegistryService {
     UtilityFunctionRegistry,
   ];
 
-  private readonly registryMap = new Map([
-    ["config", ConfigRegistry],
-    ["service", ServiceRegistry],
-    ["controller", ControllerRegistry],
-    ["model", ModelRegistry],
-    ["function", UtilityFunctionRegistry],
-  ]);
+  private readonly registryMap = {
+    ["config"]: ConfigRegistry,
+    ["service"]: ServiceRegistry,
+    ["controller"]: ControllerRegistry,
+    ["model"]: ModelRegistry,
+    ["function"]: UtilityFunctionRegistry,
+  };
 
   async generatePartialRegistryTree(documentPath: string) {
     const filename = path.parse(documentPath).name;

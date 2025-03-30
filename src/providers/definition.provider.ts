@@ -16,7 +16,7 @@ export class DefinitionProvider implements vscode.DefinitionProvider {
     const documentText = document.getText();
     const wordRange = document.getWordRangeAtPosition(position);
     const lineNumber = position.line;
-    
+
     const functionName = document.getText(wordRange);
     if (!functionName) return null;
 
@@ -24,9 +24,7 @@ export class DefinitionProvider implements vscode.DefinitionProvider {
     const cachedDefinition = this.store.get(cacheKey);
     if (cachedDefinition) return cachedDefinition;
 
-    const registryTreeJson = this.memento.get<RegistryTree>(
-      Configs.REGISTRY_TREE_CACHE_KEY
-    );
+    const registryTreeJson = this.memento.get(Configs.REGISTRY_TREE_CACHE_KEY);
     if (!registryTreeJson) return;
 
     const definitionService = new DefinitionService(
