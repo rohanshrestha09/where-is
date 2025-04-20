@@ -36,7 +36,12 @@ export async function activate(context: vscode.ExtensionContext) {
   const isEnabled = await isProjectEnabled(enabledProjects);
   if (!isEnabled) return;
 
-  const registryDisposable = new RegistryDisposable(context.globalState);
+  const registryDisposable = new RegistryDisposable(context.globalState, {
+    onRefresh: () => {
+      definitionStore.clear();
+      hoverStore.clear();
+    },
+  });
   context.subscriptions.push(registryDisposable);
 
   configs.when("enableDefinition", true, () => {

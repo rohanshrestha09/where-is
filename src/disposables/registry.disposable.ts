@@ -5,28 +5,68 @@ import { RegistryTree } from "../datastructures/registry-tree";
 
 export class RegistryDisposable implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
+  private isGitRepositoryOpened = false;
 
-  constructor(private readonly memento: vscode.Memento) {
-    this.initializeRegistry();
+  constructor(
+    private readonly memento: vscode.Memento,
+    private readonly options: { onRefresh?: () => void }
+  ) {
+    this.buildRegistryTree();
+
+    this.initializeCommands();
+
+    this.initializeEventListeners();
   }
 
-  private async initializeRegistry() {
-    await this.buildRegistryTree();
-
+  private initializeCommands() {
     this.disposables.push(
       vscode.commands.registerCommand(
         Configs.REGISTRY_TREE_REFRESH_COMMAND,
-        () => this.handleRefreshRegistry()
+        () => {
+          this.handleRefreshRegistry();
+          this.options.onRefresh?.();
+        }
       )
     );
+  }
 
+  private async initializeEventListeners() {
     this.disposables.push(
       vscode.workspace.onDidChangeTextDocument((event) => {
-        if (event.document === vscode.window.activeTextEditor?.document) {
-          this.buildRegistryTreeForDocument(event.document);
-        }
+        this.buildRegistryTreeForDocument(event.document);
+        this.options.onRefresh?.();
       })
     );
+
+    const gitApi = await this.fetchGitApi();
+    if (!gitApi) return;
+
+    this.disposables.push(
+      gitApi.onDidOpenRepository((repository) => {
+        repository.state.onDidChange(() => {
+          if (!this.isGitRepositoryOpened) {
+            this.isGitRepositoryOpened = true;
+            return;
+          }
+          this.handleRefreshRegistry();
+          this.options.onRefresh?.();
+        });
+      })
+    );
+  }
+
+  private async fetchGitApi(): Promise<{
+    onDidOpenRepository: (
+      callback: (repository: {
+        state: { onDidChange: (callback: () => void) => void };
+      }) => void
+    ) => vscode.Disposable;
+  } | null> {
+    const gitExtension = vscode.extensions.getExtension("vscode.git");
+    if (!gitExtension) return null;
+
+    const git = await gitExtension.activate();
+    return git.getAPI(1);
   }
 
   private async handleRefreshRegistry() {
@@ -48,7 +88,9 @@ export class RegistryDisposable implements vscode.Disposable {
       );
     } catch (error) {
       vscode.window.showErrorMessage(
-        `Failed to refresh registry: ${(error as Error).message}`
+        `Failed to refresh registry: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
       );
     }
   }

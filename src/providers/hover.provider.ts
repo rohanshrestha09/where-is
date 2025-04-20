@@ -15,14 +15,14 @@ export class HoverProvider implements vscode.HoverProvider {
     const lineNumber = position.line;
 
     const functionName = document.getText(wordRange);
-    if (!functionName) return null;
+    if (!functionName) return;
 
     const cacheKey = `${document.uri.fsPath}:${lineNumber}:${functionName}`;
     const cachedHover = this.store.get(cacheKey);
     if (cachedHover) return cachedHover;
 
     const registryTreeJson = this.memento.get(Configs.REGISTRY_TREE_CACHE_KEY);
-    if (!registryTreeJson) return null;
+    if (!registryTreeJson) return;
 
     const startTime = performance.now();
 
@@ -36,7 +36,7 @@ export class HoverProvider implements vscode.HoverProvider {
     );
 
     const functionDefinition = await definitionService.findFunctionDefiniton();
-    if (!functionDefinition) return null;
+    if (!functionDefinition) return;
 
     const timeTaken = Math.round(performance.now() - startTime);
 

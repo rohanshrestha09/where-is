@@ -18,7 +18,7 @@ export class DefinitionProvider implements vscode.DefinitionProvider {
     const lineNumber = position.line;
 
     const functionName = document.getText(wordRange);
-    if (!functionName) return null;
+    if (!functionName) return;
 
     const cacheKey = `${document.uri.fsPath}:${lineNumber}:${functionName}`;
     const cachedDefinition = this.store.get(cacheKey);
