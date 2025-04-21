@@ -5,7 +5,7 @@ import { RegistryTree } from "../datastructures/registry-tree";
 
 export class RegistryDisposable implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
-  private isGitRepositoryOpened = false;
+  private repositoryStateChangeCount = 0;
 
   constructor(
     private readonly memento: vscode.Memento,
@@ -44,11 +44,11 @@ export class RegistryDisposable implements vscode.Disposable {
     this.disposables.push(
       gitApi.onDidOpenRepository((repository) => {
         repository.state.onDidChange(() => {
-          if (!this.isGitRepositoryOpened) {
-            this.isGitRepositoryOpened = true;
+          if (this.repositoryStateChangeCount < 2) {
+            this.repositoryStateChangeCount++;
             return;
           }
-          this.handleRefreshRegistry();
+          this.handleRefreshRegistry({ suppressNotification: true });
           this.options.onRefresh?.();
         });
       })
@@ -69,29 +69,35 @@ export class RegistryDisposable implements vscode.Disposable {
     return git.getAPI(1);
   }
 
-  private async handleRefreshRegistry() {
+  private async handleRefreshRegistry({ suppressNotification = false } = {}) {
     try {
       const startTime = performance.now();
       await vscode.window.withProgress(
         {
-          location: vscode.ProgressLocation.Notification,
+          location: suppressNotification
+            ? vscode.ProgressLocation.Window
+            : vscode.ProgressLocation.Notification,
           title: "Refreshing registry...",
           cancellable: false,
         },
         async () => {
           await this.buildRegistryTree();
           const duration = Math.round(performance.now() - startTime);
-          vscode.window.showInformationMessage(
-            `Registry refreshed in ${duration}ms`
-          );
+          if (!suppressNotification) {
+            vscode.window.showInformationMessage(
+              `Registry refreshed in ${duration}ms`
+            );
+          }
         }
       );
     } catch (error) {
-      vscode.window.showErrorMessage(
-        `Failed to refresh registry: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
+      if (!suppressNotification) {
+        vscode.window.showErrorMessage(
+          `Failed to refresh registry: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
+      }
     }
   }
 

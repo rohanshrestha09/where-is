@@ -26,10 +26,9 @@ export class RegistryService {
   async generatePartialRegistryTree(documentPath: string) {
     const filename = path.parse(documentPath).name;
 
-    const Registry =
-      Object.entries(this.registryMap).find(([suffix]) =>
-        filename.endsWith(suffix)
-      )?.[1] ?? null;
+    const Registry = Object.entries(this.registryMap).find(([suffix]) =>
+      filename.endsWith(suffix)
+    )?.[1];
     if (!Registry) return null;
 
     const registry = new Registry({ documentPath });
