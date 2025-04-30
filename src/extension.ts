@@ -4,6 +4,7 @@ import * as path from "path";
 import { Configs } from "./configs";
 import { DefinitionProvider } from "./providers/definition.provider";
 import { HoverProvider } from "./providers/hover.provider";
+import { CompletionProvider } from "./providers/completion.provider";
 import { DiagnosticDisposable } from "./disposables/diagnostic.disposable";
 import { RegistryDisposable } from "./disposables/registry.disposable";
 
@@ -70,5 +71,16 @@ export async function activate(context: vscode.ExtensionContext) {
       language: "javascript",
     });
     context.subscriptions.push(diagnosticDisposable);
+  });
+
+  configs.when("enableCompletion", true, () => {
+    const completionProvider = new CompletionProvider(context.globalState);
+    const completionDisposable =
+      vscode.languages.registerCompletionItemProvider(
+        "javascript",
+        completionProvider,
+        "."
+      );
+    context.subscriptions.push(completionDisposable);
   });
 }

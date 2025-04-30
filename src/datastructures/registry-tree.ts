@@ -24,7 +24,7 @@ export type RegistryNode = {
  */
 export class RegistryTree {
   private readonly __type__: "branch" | "leaf";
-  private readonly children: Map<string, RegistryTree> = new Map();
+  readonly children: Map<string, RegistryTree> = new Map();
 
   /**
    * Creates a new RegistryTree instance
@@ -87,6 +87,33 @@ export class RegistryTree {
         this.children.get(key)!.merge(childTree);
       }
     });
+  }
+
+  /**
+   * Changes the key of a child node at the specified level
+   * @param level - The level in the tree where the key should be changed
+   * @param oldKey - The current key of the node
+   * @param newKey - The new key to assign
+   * @returns boolean indicating if the key was successfully changed
+   */
+  changeKeyAtLevel(level: number, oldKey: string, newKey: string): boolean {
+    if (level < 0) return false;
+
+    if (level === 0) {
+      if (!this.children.has(oldKey)) return false;
+      const node = this.children.get(oldKey);
+      this.children.delete(oldKey);
+      this.children.set(newKey, node!);
+      return true;
+    }
+
+    let success = false;
+    this.children.forEach((child) => {
+      if (child.changeKeyAtLevel(level - 1, oldKey, newKey)) {
+        success = true;
+      }
+    });
+    return success;
   }
 
   /**

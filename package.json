@@ -25,10 +25,10 @@
     "configuration": {
       "title": "Where is?",
       "properties": {
-        "whereIs.enableAutocompletion": {
+        "whereIs.enableCompletion": {
           "type": "boolean",
           "default": true,
-          "description": "Enable or disable autocompletion for function calls"
+          "description": "Enable or disable completion for registry paths"
         },
         "whereIs.enableHover": {
           "type": "boolean",
@@ -93,6 +93,7 @@
   },
   "dependencies": {
     "acorn": "^8.14.1",
+    "acorn-loose": "^8.5.0",
     "acorn-walk": "^8.3.4",
     "fuzzball": "^2.1.6",
     "glob": "^11.0.1"
