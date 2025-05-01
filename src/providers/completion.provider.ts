@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { Configs } from "../configs";
 import { RegistryTree } from "../datastructures/registry-tree";
 import { CompletionService } from "../services/completion.service";
+import { ExtraUtil } from "../utils/extra.util";
 
 export class CompletionProvider implements vscode.CompletionItemProvider {
   constructor(private readonly memento: vscode.Memento) {}
@@ -52,6 +53,21 @@ export class CompletionProvider implements vscode.CompletionItemProvider {
     return RegistryTree.fromJSON(cachedRegistryTreeJson);
   }
 
+  private getInsertText(key: string, textBeforeCursor: string) {
+    if (
+      ExtraUtil.isValidIdentifierName(key) ||
+      ExtraUtil.isInsideBracketsAndQuotes(textBeforeCursor)
+    ) {
+      return key;
+    }
+
+    if (ExtraUtil.isInsideBrackets(textBeforeCursor)) {
+      return `'${key}'`;
+    }
+
+    return `['${key}']`;
+  }
+
   private createCompletionItem(
     key: string,
     document: vscode.TextDocument,
@@ -62,28 +78,28 @@ export class CompletionProvider implements vscode.CompletionItemProvider {
       vscode.CompletionItemKind.Field
     );
 
-    completionItem.insertText = key.includes("-") ? `['${key}']` : key;
+    const { linePrefix } = this.getCurrentContext(document, position);
+    const insertText = this.getInsertText(key, linePrefix);
 
-    completionItem.detail = key.includes("-") ? `['${key}']` : key;
-
+    completionItem.insertText = insertText;
+    completionItem.detail = insertText;
     completionItem.preselect = true;
-
-    if (key.includes("-")) {
-      this.handleHyphenatedKey(completionItem, document, position);
+    
+    if (!ExtraUtil.isValidIdentifierName(key)) {
+      this.handleInvalidIdentifierName(completionItem, document, position);
     }
 
     return completionItem;
   }
 
-  private handleHyphenatedKey(
+  private handleInvalidIdentifierName(
     completionItem: vscode.CompletionItem,
     document: vscode.TextDocument,
     position: vscode.Position
   ) {
-    const line = document.lineAt(position);
-    const textBeforeCursor = line.text.substring(0, position.character);
+    const { linePrefix } = this.getCurrentContext(document, position);
 
-    if (!textBeforeCursor.endsWith(".")) return;
+    if (!linePrefix.endsWith(".")) return;
 
     const range = new vscode.Range(
       position.line,

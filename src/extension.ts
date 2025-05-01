@@ -79,7 +79,9 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.languages.registerCompletionItemProvider(
         "javascript",
         completionProvider,
-        "."
+        ".",
+        `"`,
+        "'",
       );
     context.subscriptions.push(completionDisposable);
   });

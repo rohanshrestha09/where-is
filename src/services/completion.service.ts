@@ -51,7 +51,7 @@ export class CompletionService {
         },
       });
 
-      return argumentName;
+      return argumentName as string | null;
     } catch (error) {
       return null;
     }
@@ -96,7 +96,7 @@ export class CompletionService {
     let currentTree: RegistryTree | undefined = this.registryTree;
 
     for (const word of path) {
-      const trimmedWord = word.trim();
+      const trimmedWord = word.trim().replace(/['"]/g, "");
       if (!trimmedWord) continue;
 
       currentTree = currentTree.children.get(trimmedWord);
@@ -122,12 +122,9 @@ export class CompletionService {
     const currentTree = this.traverseTree(pathParts.slice(0, -1));
     if (!currentTree) return [];
 
-    const completionItems: string[] = [];
-    currentTree.children.forEach((_, key) => {
-      if (key.startsWith(currentWord)) {
-        completionItems.push(key);
-      }
-    });
+    const completionItems = Array.from(currentTree.children.keys()).filter(
+      (key) => key.startsWith(currentWord)
+    );
 
     return completionItems;
   }

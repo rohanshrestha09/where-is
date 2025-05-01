@@ -19,6 +19,29 @@ export class ExtraUtil {
       .toLowerCase();
   }
 
+  static isValidIdentifierName(str: string) {
+    if (/[-+.@#$%^&*()!~`\s]/.test(str)) {
+      return false;
+    }
+
+    return /^[a-zA-Z][a-zA-Z0-9]*$/.test(str);
+  }
+
+  static isInsideBrackets(str: string) {
+    return str.includes("[") && !str.includes("]");
+  }
+
+  static isInsideBracketsAndQuotes(str: string) {
+    const quotePairs = [
+      ["['", "']"],
+      ['["', '"]'],
+    ];
+
+    return quotePairs.some(
+      ([start, end]) => str.includes(start) && !str.includes(end)
+    );
+  }
+
   static convertToPascalCase(str: string) {
     return str
       .replace(/(^|-)(\w)/g, (match, p1, p2) => p2.toUpperCase())
