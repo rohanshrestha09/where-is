@@ -51,7 +51,8 @@
             "type": "string"
           },
           "default": [
-            "base-project"
+            "base-project",
+            "portpro-backend"
           ],
           "description": "List of project names (from package.json) where the extension should be enabled"
         }

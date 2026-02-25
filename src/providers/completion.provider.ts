@@ -7,14 +7,19 @@ import { ExtraUtil } from "../utils/extra.util";
 export class CompletionProvider implements vscode.CompletionItemProvider {
   constructor(private readonly memento: vscode.Memento) {}
 
-  async provideCompletionItems(
-    document: vscode.TextDocument,
-    position: vscode.Position
-  ) {
-    const { currentWord, linePrefix } = this.getCurrentContext(
-      document,
-      position
-    );
+  private getCompletionDetail(key: string): string {
+    if (key.includes("model") || key.includes("Model")) {
+      return "Model";
+    } else if (key.includes("controller") || key.includes("Controller")) {
+      return "Controller";
+    } else if (key.includes("service") || key.includes("Service")) {
+      return "Service";
+    }
+    return "Property";
+  }
+
+  async provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+    const { currentWord, linePrefix } = this.getCurrentContext(document, position);
 
     const registryTree = this.getRegistryTree();
     if (!registryTree) return [];
@@ -26,46 +31,35 @@ export class CompletionProvider implements vscode.CompletionItemProvider {
 
     const completionItems = completionService.getCompletionItems(currentWord);
 
-    return completionItems.map((key) =>
-      this.createCompletionItem(key, document, position)
-    );
+    return completionItems.map((key) => this.createCompletionItem(key, document, position));
   }
 
-  private getCurrentContext(
-    document: vscode.TextDocument,
-    position: vscode.Position
-  ) {
+  private getCurrentContext(document: vscode.TextDocument, position: vscode.Position) {
+    const linePrefix = document.lineAt(position).text.substring(0, position.character);
+
     const wordRange = document.getWordRangeAtPosition(position);
     const currentWord = wordRange ? document.getText(wordRange) : "";
-    const linePrefix = document
-      .lineAt(position)
-      .text.substring(0, position.character);
 
     return { currentWord, linePrefix };
   }
 
   private getRegistryTree() {
-    const cachedRegistryTreeJson = this.memento.get(
-      Configs.REGISTRY_TREE_CACHE_KEY
-    );
+    const cachedRegistryTreeJson = this.memento.get(Configs.REGISTRY_TREE_CACHE_KEY);
     if (!cachedRegistryTreeJson) return null;
 
     return RegistryTree.fromJSON(cachedRegistryTreeJson);
   }
 
   private getInsertText(key: string, textBeforeCursor: string) {
-    if (
-      ExtraUtil.isValidIdentifierName(key) ||
-      ExtraUtil.isInsideBracketsAndQuotes(textBeforeCursor)
-    ) {
+    if (ExtraUtil.isValidIdentifierName(key)) {
       return key;
     }
 
-    if (ExtraUtil.isInsideBrackets(textBeforeCursor)) {
-      return `'${key}'`;
+    if (textBeforeCursor.endsWith(".")) {
+      return `['${key}']`;
     }
 
-    return `['${key}']`;
+    return key;
   }
 
   private createCompletionItem(
@@ -73,19 +67,17 @@ export class CompletionProvider implements vscode.CompletionItemProvider {
     document: vscode.TextDocument,
     position: vscode.Position
   ) {
-    const completionItem = new vscode.CompletionItem(
-      key,
-      vscode.CompletionItemKind.Field
-    );
-
     const { linePrefix } = this.getCurrentContext(document, position);
     const insertText = this.getInsertText(key, linePrefix);
 
-    completionItem.insertText = insertText;
-    completionItem.detail = insertText;
+    const completionItem = new vscode.CompletionItem(key, vscode.CompletionItemKind.Field);
+    completionItem.insertText = new vscode.SnippetString(insertText);
+    completionItem.detail = `${key} (${this.getCompletionDetail(key)})`;
     completionItem.preselect = true;
-    
-    if (!ExtraUtil.isValidIdentifierName(key)) {
+    completionItem.sortText = `!0000_${key}`;
+    completionItem.filterText = key;
+
+    if (!ExtraUtil.isValidIdentifierName(key) && linePrefix.endsWith(".")) {
       this.handleInvalidIdentifierName(completionItem, document, position);
     }
 

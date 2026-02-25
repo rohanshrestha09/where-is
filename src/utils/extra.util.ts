@@ -28,18 +28,34 @@ export class ExtraUtil {
   }
 
   static isInsideBrackets(str: string) {
-    return str.includes("[") && !str.includes("]");
+    const hasOpenBracket = str.includes("[");
+    const hasCloseBracket = str.includes("]");
+
+    if (!hasOpenBracket) return false;
+
+    if (hasOpenBracket && hasCloseBracket) {
+      // Check if we end with empty brackets (including nested ones)
+      return str.endsWith("[]") || str.match(/\[[^\]]*\]\[\]$/);
+    }
+
+    return !hasCloseBracket;
   }
 
-  static isInsideBracketsAndQuotes(str: string) {
-    const quotePairs = [
-      ["['", "']"],
-      ['["', '"]'],
-    ];
-
-    return quotePairs.some(
-      ([start, end]) => str.includes(start) && !str.includes(end)
-    );
+  static isInsideBracketsWithQuotes(str: string) {
+    // Check for incomplete bracket-quote patterns
+    const doubleQuoteMatch = str.match(/\["([^"]*)$/);
+    const singleQuoteMatch = str.match(/\['([^']*)$/);
+    
+    // Check for empty bracket-quote patterns (including nested ones)
+    const emptyDoubleQuote = str.endsWith('[""]');
+    const emptySingleQuote = str.endsWith("['']");
+    
+    // Check for nested empty bracket-quote patterns like server["plugins"][""]
+    const nestedEmptyDoubleQuote = str.match(/\["[^"]*"\]\[""\]$/);
+    const nestedEmptySingleQuote = str.match(/\['[^']*'\]\[''\]$/);
+    
+    return !!(doubleQuoteMatch || singleQuoteMatch || emptyDoubleQuote || emptySingleQuote || 
+              nestedEmptyDoubleQuote || nestedEmptySingleQuote);
   }
 
   static convertToPascalCase(str: string) {
@@ -49,9 +65,40 @@ export class ExtraUtil {
   }
 
   static isValidFunctionName(functionName: string) {
-    return (
-      functionName.length < MAX_FUNCTION_LENGTH && !this.isKeyword(functionName)
-    );
+    return functionName.length < MAX_FUNCTION_LENGTH && !this.isKeyword(functionName);
+  }
+
+  static stripKeywords(expression: string): string {
+    let stripped = expression.trim();
+
+    const keywords = [
+      "return ",
+      "await ",
+      "yield ",
+      "throw ",
+      "typeof ",
+      "void ",
+      "delete ",
+      "new ",
+      "!",
+      "-",
+      "+",
+      "~",
+    ];
+
+    let previousLength = 0;
+    while (stripped.length !== previousLength) {
+      previousLength = stripped.length;
+
+      for (const keyword of keywords) {
+        if (stripped.startsWith(keyword)) {
+          stripped = stripped.substring(keyword.length).trim();
+          break;
+        }
+      }
+    }
+
+    return stripped;
   }
 
   static getGlobPathReference(pathReference: string) {
